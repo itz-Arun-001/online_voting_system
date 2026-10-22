@@ -14,9 +14,9 @@
   <div id="msg"></div>
 
   <form id="emailForm">
-    <label for="email">College email</label>
-    <input id="email" type="email" autocomplete="email" required>
-    <p class="hint" id="domainHint"></p>
+    <label for="email">Email address</label>
+    <input id="email" type="email" autocomplete="email" placeholder="name@college.edu or admin email" required>
+    <p class="hint" id="domainHint">Sign in with your college email or admin email address.</p>
     <button class="btn" id="sendBtn">Send code</button>
   </form>
 
@@ -37,8 +37,12 @@ const $ = (s) => document.querySelector(s);
 if (sessionStorage.getItem('token')) location.replace(sessionStorage.getItem('role') === 'ADMIN' ? 'admin.html' : 'vote.html');
 
 fetch('/api/public/config').then((r) => r.json()).then((c) => {
-  $('#email').placeholder = 'name@' + c.collegeDomain;
-  $('#domainHint').textContent = 'Only addresses ending in @' + c.collegeDomain + ' can sign in.';
+  if (c.hint) {
+    $('#domainHint').textContent = 'Accepted domains: ' + c.hint + ' (or authorized admin emails)';
+  }
+  if (c.collegeDomain) {
+    $('#email').placeholder = 'name@' + c.collegeDomain;
+  }
 }).catch(() => {});
 
 async function sendCode() {

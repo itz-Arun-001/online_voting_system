@@ -43,10 +43,27 @@ public class AppProperties {
         private int windowMinutes = 10;
     }
 
-    /** College domain, lowercased and without a leading @. */
+    /** List of college domains, lowercased and without leading @. Supports comma-separated domains. */
+    public List<String> domains() {
+        if (collegeDomain == null || collegeDomain.isBlank()) return List.of();
+        return java.util.Arrays.stream(collegeDomain.split("[,;\\s]+"))
+                .map(EmailUtil::normalize)
+                .map(d -> d.startsWith("@") ? d.substring(1) : d)
+                .filter(d -> !d.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    /** Primary college domain (first configured). */
     public String domain() {
-        String d = EmailUtil.normalize(collegeDomain);
-        return d != null && d.startsWith("@") ? d.substring(1) : d;
+        List<String> list = domains();
+        return list.isEmpty() ? "yourcollege.edu" : list.get(0);
+    }
+
+    public boolean hasCollegeDomain(String email) {
+        String norm = EmailUtil.normalize(email);
+        if (norm == null) return false;
+        return domains().stream().anyMatch(d -> norm.endsWith("@" + d));
     }
 
     public List<String> normalizedAdminEmails() {
@@ -54,6 +71,6 @@ public class AppProperties {
     }
 
     public boolean isAdminEmail(String normalizedEmail) {
-        return normalizedAdminEmails().contains(normalizedEmail);
+        return normalizedAdminEmails().contains(EmailUtil.normalize(normalizedEmail));
     }
 }

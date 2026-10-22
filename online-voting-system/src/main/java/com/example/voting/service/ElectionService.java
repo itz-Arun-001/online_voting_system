@@ -120,19 +120,26 @@ public class ElectionService {
                 .anyMatch(e -> isAllowedDomain(e, email));
     }
 
-    /** Returns true if the email domain is accepted anywhere — global domain or any per-election domain. */
+    /** Returns true if the email domain is accepted anywhere — global domains, voter list, or any per-election domain. */
     public boolean isEmailDomainAllowedAnywhere(String email, com.example.voting.config.AppProperties props) {
-        if (EmailUtil.hasDomain(email, props.domain())) return true;
-        return elections.findByStatusNot(ElectionStatus.CLOSED).stream()
-                .anyMatch(e -> isAllowedDomain(e, email));
+        String norm = EmailUtil.normalize(email);
+        if (norm == null) return false;
+        if (props.hasCollegeDomain(norm)) return true;
+        if (eligible.existsByEmail(norm)) return true;
+        return elections.findAll().stream().anyMatch(e -> isAllowedDomain(e, norm));
+    }
+
+    /** Returns all known allowed domains across configuration and elections. */
+    public java.util.Set<String> allKnownDomains(com.example.voting.config.AppProperties props) {
+        java.util.Set<String> knownDomains = new java.util.LinkedHashSet<>(props.domains());
+        elections.findAll().forEach(e -> knownDomains.addAll(effectiveDomains(e)));
+        return knownDomains;
     }
 
     /** Builds a human-readable hint listing all known domains (global + per-election). */
     public String allKnownDomainsHint(com.example.voting.config.AppProperties props) {
-        java.util.Set<String> knownDomains = new java.util.LinkedHashSet<>();
-        knownDomains.add(props.domain());
-        elections.findByStatusNot(ElectionStatus.CLOSED)
-                .forEach(e -> knownDomains.addAll(effectiveDomains(e)));
+        java.util.Set<String> knownDomains = allKnownDomains(props);
+        if (knownDomains.isEmpty()) return "@" + props.domain();
         return knownDomains.stream().map(d -> "@" + d).collect(java.util.stream.Collectors.joining(", "));
     }
 

@@ -3,6 +3,7 @@ package com.example.voting.controller;
 import com.example.voting.config.AppProperties;
 import com.example.voting.dto.Dtos.*;
 import com.example.voting.service.AuthService;
+import com.example.voting.service.ElectionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AuthController {
     private final AuthService authService;
+    private final ElectionService electionService;
     private final AppProperties props;
 
     @PostMapping("/api/auth/request-otp")
@@ -28,6 +30,12 @@ public class AuthController {
 
     @GetMapping("/api/public/config")
     public Map<String, Object> config() {
-        return Map.of("collegeDomain", props.domain(), "otpLength", props.getOtp().getLength());
+        return Map.of(
+            "collegeDomain", props.domain(),
+            "collegeDomains", props.domains(),
+            "allowedDomains", electionService.allKnownDomains(props),
+            "hint", electionService.allKnownDomainsHint(props),
+            "otpLength", props.getOtp().getLength()
+        );
     }
 }
