@@ -28,20 +28,25 @@ public class AuthService {
     public MessageResponse requestOtp(String rawEmail, String ip) {
         String email = EmailUtil.normalize(rawEmail);
         if (!EmailUtil.isValid(email)) throw ApiException.badRequest("Enter a valid email address.");
-        if (!EmailUtil.hasDomain(email, props.domain())) {
-            throw ApiException.badRequest("Use your college email address (ending in @" + props.domain() + ").");
+
+        // Accept admins, or emails matching the global college domain OR any per-election allowed domain
+        boolean domainAllowed = props.isAdminEmail(email) || electionService.isEmailDomainAllowedAnywhere(email, props);
+        if (!domainAllowed) {
+            String hint = electionService.allKnownDomainsHint(props);
+            throw ApiException.badRequest("Use your college email address (ending in " + hint + ").");
         }
+
         var rl = props.getRateLimit();
         Duration window = Duration.ofMinutes(rl.getWindowMinutes());
         rateLimit.check("otp:email:" + email, rl.getOtpRequests(), window);
         rateLimit.check("otp:ip:" + ip, rl.getOtpIpRequests(), window);
 
-        // Same response whether or not the address is eligible, so the endpoint reveals nothing.
-        if (props.isAdminEmail(email) || electionService.hasAnyAccess(email)) {
+        // Issue and send OTP to any authorized domain email or admin
+        if (domainAllowed) {
             String code = otpService.issue(email);
             emailService.sendOtp(email, code);
         }
-        return new MessageResponse("If the email is eligible, a code has been sent.");
+        return new MessageResponse("A sign-in code has been sent to your email.");
     }
 
     public AuthResponse verifyOtp(String rawEmail, String otp, String ip) {

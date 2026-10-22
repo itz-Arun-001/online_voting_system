@@ -34,6 +34,17 @@ public class EmailService {
         return s;
     }
 
+    private String resolveFrom(JavaMailSender sender) {
+        String from = props.getMailFrom();
+        if (from != null && !from.isBlank()) {
+            return from.trim();
+        }
+        if (sender instanceof JavaMailSenderImpl impl && impl.getUsername() != null && !impl.getUsername().isBlank()) {
+            return impl.getUsername().trim();
+        }
+        return "no-reply@voting.local";
+    }
+
     /** One clear line at startup so it is obvious whether real emails will go out. */
     @EventListener(ApplicationReadyEvent.class)
     public void logMailStatus() {
@@ -42,7 +53,7 @@ public class EmailService {
             log.warn("Email is NOT configured: sign-in codes are only printed in this console (dev). Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD in .env to send real emails.");
         } else {
             String host = sender instanceof JavaMailSenderImpl impl ? impl.getHost() : "the configured SMTP server";
-            log.info("Email is configured: sign-in codes will be emailed through {} as {}.", host, props.getMailFrom());
+            log.info("Email is configured: sign-in codes will be emailed through {} as {}.", host, resolveFrom(sender));
         }
     }
 
@@ -61,7 +72,7 @@ public class EmailService {
             int minutes = props.getOtp().getExpiryMinutes();
             MimeMessage message = sender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(props.getMailFrom());
+            helper.setFrom(resolveFrom(sender));
             helper.setTo(to);
             helper.setSubject("Your voting code: " + code);
             String text = "Your sign-in code is " + code + ".\n\nIt expires in " + minutes
@@ -71,6 +82,7 @@ public class EmailService {
                     + " minutes. If you did not ask for it, you can ignore this email.</p>";
             helper.setText(text, html);
             sender.send(message);
+            log.info("Sent real voting OTP email to {}", to);
         } catch (Exception ex) {
             log.error("Could not send the sign-in code to {}: {}", to, ex.getMessage());
         }

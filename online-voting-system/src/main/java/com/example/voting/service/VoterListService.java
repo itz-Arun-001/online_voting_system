@@ -1,6 +1,5 @@
 package com.example.voting.service;
 
-import com.example.voting.config.AppProperties;
 import com.example.voting.dto.Dtos.UploadSummary;
 import com.example.voting.entity.EligibleVoter;
 import com.example.voting.exception.ApiException;
@@ -26,13 +25,15 @@ import java.util.Set;
 public class VoterListService {
     private final EligibleVoterRepository eligible;
     private final ElectionService electionService;
-    private final AppProperties props;
 
     /** CSV columns: email,name,roll_number (header row optional). Emails are normalized and de-duplicated. */
     @Transactional
     public UploadSummary importCsv(Long electionId, MultipartFile file) {
-        electionService.get(electionId);
+        var election = electionService.get(electionId);
         if (file == null || file.isEmpty()) throw ApiException.badRequest("Choose a CSV file to upload.");
+
+        // Resolve allowed domains for this specific election
+        var allowedDomains = electionService.effectiveDomains(election);
 
         int added = 0, duplicates = 0, invalid = 0;
         List<String> invalidRows = new ArrayList<>();
@@ -50,7 +51,9 @@ public class VoterListService {
                 if (first && "email".equals(email)) { first = false; continue; }
                 first = false;
 
-                if (!EmailUtil.isValid(email) || !EmailUtil.hasDomain(email, props.domain())) {
+                boolean domainOk = allowedDomains.stream()
+                        .anyMatch(d -> EmailUtil.hasDomain(email, d));
+                if (!EmailUtil.isValid(email) || !domainOk) {
                     invalid++;
                     if (invalidRows.size() < 10) invalidRows.add(line.length() > 80 ? line.substring(0, 80) : line);
                     continue;

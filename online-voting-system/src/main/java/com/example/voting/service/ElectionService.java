@@ -14,6 +14,7 @@ import com.example.voting.repository.ElectionRepository;
 import com.example.voting.repository.EligibleVoterRepository;
 import com.example.voting.repository.VoteRepository;
 import com.example.voting.security.AuthUser;
+import com.example.voting.util.EmailUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -70,6 +71,7 @@ public class ElectionService {
     }
 
     public boolean isEligible(Election e, String email) {
+        if (!isAllowedDomain(e, email)) return false;
         return !e.isRestrictToEligibleList() || eligible.existsByElectionIdAndEmail(e.getId(), email);
     }
 
@@ -79,15 +81,66 @@ public class ElectionService {
                 || elections.existsByRestrictToEligibleListFalseAndStatusNot(ElectionStatus.CLOSED);
     }
 
+    /**
+     * Returns the effective list of allowed email domains for the election.
+     * When the election has no custom domains the global college domain is used.
+     */
+    public List<String> effectiveDomains(Election e) {
+        String raw = e.getAllowedDomains();
+        if (raw == null || raw.isBlank()) {
+            return List.of(props.domain());
+        }
+        return java.util.Arrays.stream(raw.split("[,;\\s]+"))
+                .map(String::trim)
+                .map(d -> d.startsWith("@") ? d.substring(1) : d)
+                .map(d -> d.toLowerCase(Locale.ROOT))
+                .filter(d -> !d.isEmpty())
+                .distinct()
+                .toList();
+    }
+
+    /** Returns true if the email ends with one of this election's allowed domains. */
+    public boolean isAllowedDomain(Election e, String email) {
+        return effectiveDomains(e).stream().anyMatch(domain -> email != null && email.endsWith("@" + domain));
+    }
+
+    /**
+     * True if this email could vote in at least one election (used to gate OTP issue).
+     * Checks eligibility list AND per-election domain restrictions on open elections.
+     */
+    public boolean hasAnyAccessWithDomains(String email) {
+        if (eligible.existsByEmail(email)) return true;
+        // Check non-closed elections that don't restrict to an eligible list
+        return elections.findByStatusNot(ElectionStatus.CLOSED).stream()
+                .filter(e -> !e.isRestrictToEligibleList())
+                .anyMatch(e -> isAllowedDomain(e, email));
+    }
+
+    /** Returns true if the email domain is accepted anywhere — global domain or any per-election domain. */
+    public boolean isEmailDomainAllowedAnywhere(String email, com.example.voting.config.AppProperties props) {
+        if (EmailUtil.hasDomain(email, props.domain())) return true;
+        return elections.findByStatusNot(ElectionStatus.CLOSED).stream()
+                .anyMatch(e -> isAllowedDomain(e, email));
+    }
+
+    /** Builds a human-readable hint listing all known domains (global + per-election). */
+    public String allKnownDomainsHint(com.example.voting.config.AppProperties props) {
+        java.util.Set<String> knownDomains = new java.util.LinkedHashSet<>();
+        knownDomains.add(props.domain());
+        elections.findByStatusNot(ElectionStatus.CLOSED)
+                .forEach(e -> knownDomains.addAll(effectiveDomains(e)));
+        return knownDomains.stream().map(d -> "@" + d).collect(java.util.stream.Collectors.joining(", "));
+    }
+
     public ElectionView toView(Election e, Boolean hasVoted) {
         return new ElectionView(e.getId(), e.getTitle(), e.getDescription(), e.getStartTime(), e.getEndTime(),
                 currentStatus(e), e.getResultMode(), e.getResultsPublishAt(), e.isResultsPublished(),
-                canViewResults(e), e.isRestrictToEligibleList(), hasVoted);
+                canViewResults(e), e.isRestrictToEligibleList(), hasVoted, e.getAllowedDomains());
     }
 
     public List<ElectionView> listFor(AuthUser me) {
         return elections.findAllByOrderByStartTimeDesc().stream()
-                .filter(e -> isEligible(e, me.email()))
+                .filter(e -> isEligible(e, me.email()) && isAllowedDomain(e, me.email()))
                 .map(e -> toView(e, votes.existsByElectionIdAndUserId(e.getId(), me.id())))
                 .toList();
     }
@@ -177,6 +230,9 @@ public class ElectionService {
         e.setResultMode(mode);
         e.setResultsPublishAt(mode == ResultMode.SCHEDULED ? r.resultsPublishAt() : null);
         e.setRestrictToEligibleList(r.restrictToEligibleList() == null || r.restrictToEligibleList());
+        // Normalise and persist the allowed domains list
+        String domains = r.allowedDomains() == null ? null : r.allowedDomains().trim();
+        e.setAllowedDomains(domains == null || domains.isBlank() ? null : domains);
     }
 
     // ---------- admin: candidates ----------

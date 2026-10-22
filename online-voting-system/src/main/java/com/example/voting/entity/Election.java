@@ -47,4 +47,12 @@ public class Election {
 
     @Column(name = "created_by")
     private Long createdBy;
+
+    /**
+     * Comma-separated allowed email domains (without leading @), e.g.
+     * "student.annauniv.edu,staff.annauniv.edu".
+     * When blank/null the global app.college-domain is used as the sole allowed domain.
+     */
+    @Column(name = "allowed_domains", length = 1000)
+    private String allowedDomains;
 }
