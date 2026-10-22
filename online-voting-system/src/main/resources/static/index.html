@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in - College Election</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main class="sheet">
+  <header class="top"><a class="brand" href="/">College Election</a><nav id="nav"></nav></header>
+  <h1>Sign in to vote</h1>
+  <p class="lead">Use your college email address. We send a code to that inbox, and the code is your sign-in. There is no password to remember.</p>
+  <div id="msg"></div>
+
+  <form id="emailForm">
+    <label for="email">College email</label>
+    <input id="email" type="email" autocomplete="email" required>
+    <p class="hint" id="domainHint"></p>
+    <button class="btn" id="sendBtn">Send code</button>
+  </form>
+
+  <form id="otpForm" hidden>
+    <p id="sentTo"></p>
+    <label for="otp">Code from the email</label>
+    <input id="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required>
+    <div class="row">
+      <button class="btn" id="verifyBtn">Verify and continue</button>
+      <button type="button" class="btn link" id="resend">Send a new code</button>
+      <button type="button" class="btn link" id="change">Use a different email</button>
+    </div>
+  </form>
+</main>
+<script src="js/app.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+if (sessionStorage.getItem('token')) location.replace(sessionStorage.getItem('role') === 'ADMIN' ? 'admin.html' : 'vote.html');
+
+fetch('/api/public/config').then((r) => r.json()).then((c) => {
+  $('#email').placeholder = 'name@' + c.collegeDomain;
+  $('#domainHint').textContent = 'Only addresses ending in @' + c.collegeDomain + ' can sign in.';
+}).catch(() => {});
+
+async function sendCode() {
+  const email = $('#email').value.trim();
+  $('#sendBtn').disabled = true;
+  try {
+    const r = await api('/auth/request-otp', { method: 'POST', body: { email } });
+    notify($('#msg'), r.message);
+    $('#sentTo').textContent = 'Enter the 6-digit code sent to ' + email.toLowerCase() + '. It expires in 5 minutes.';
+    $('#emailForm').hidden = true; $('#otpForm').hidden = false; $('#otp').focus();
+  } catch (e) { notify($('#msg'), e.message, 'err'); }
+  $('#sendBtn').disabled = false;
+}
+$('#emailForm').addEventListener('submit', (e) => { e.preventDefault(); sendCode(); });
+$('#resend').onclick = () => sendCode();
+$('#change').onclick = () => { $('#otpForm').hidden = true; $('#emailForm').hidden = false; notify($('#msg'), ''); $('#email').focus(); };
+
+$('#otpForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('#verifyBtn').disabled = true;
+  try {
+    const r = await api('/auth/verify-otp', { method: 'POST', body: { email: $('#email').value.trim(), otp: $('#otp').value.trim() } });
+    sessionStorage.setItem('token', r.token);
+    sessionStorage.setItem('role', r.role);
+    sessionStorage.setItem('email', r.email);
+    location.href = r.role === 'ADMIN' ? 'admin.html' : 'vote.html';
+  } catch (err) { notify($('#msg'), err.message, 'err'); $('#otp').select(); }
+  $('#verifyBtn').disabled = false;
+});
+</script>
+</body>
+</html>

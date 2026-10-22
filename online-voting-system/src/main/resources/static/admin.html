@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin - College Election</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main class="sheet wide">
+  <header class="top"><a class="brand" href="/">College Election</a><nav id="nav"></nav></header>
+  <h1>Election administration</h1>
+  <div id="msg" aria-live="polite"></div>
+
+  <section>
+    <h2 style="margin-top:0">Elections</h2>
+    <div id="elections" class="scroll"></div>
+    <details>
+      <summary>Create an election</summary>
+      <form id="newForm" style="margin-top:14px">
+        <label for="n_title">Title</label><input id="n_title" type="text" required maxlength="200">
+        <label for="n_desc">Description (optional)</label><textarea id="n_desc" maxlength="2000"></textarea>
+        <label for="n_start">Voting opens</label><input id="n_start" type="datetime-local" required>
+        <label for="n_end">Voting closes</label><input id="n_end" type="datetime-local" required>
+        <label for="n_mode">Show results to voters</label>
+        <select id="n_mode">
+          <option value="ON_CLOSE">When the election closes</option>
+          <option value="LIVE">Live, while voting is open</option>
+          <option value="SCHEDULED">At a set date and time</option>
+          <option value="MANUAL">When I publish them</option>
+        </select>
+        <div id="n_pubWrap" hidden><label for="n_pub">Publish results at</label><input id="n_pub" type="datetime-local"></div>
+        <label class="check"><input id="n_restrict" type="checkbox" checked> Only people on the uploaded voter list can vote</label>
+        <button class="btn">Create election</button>
+      </form>
+    </details>
+  </section>
+
+  <section id="manage" hidden></section>
+
+  <section>
+    <h2>Audit log</h2>
+    <div id="audit" class="scroll"></div>
+  </section>
+</main>
+<script src="js/app.js"></script>
+<script>
+requireLogin('ADMIN');
+const $ = (s) => document.querySelector(s);
+const MODES = { LIVE: 'Live, while voting is open', ON_CLOSE: 'When the election closes', SCHEDULED: 'At a set date and time', MANUAL: 'When an admin publishes' };
+const TABS = { candidates: 'Candidates', voters: 'Voter list', turnout: 'Turnout', results: 'Results', settings: 'Election settings' };
+const iso = (v) => new Date(v).toISOString();
+const localInput = (i) => { const d = new Date(i); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+const say = (t, k = 'ok') => { notify($('#msg'), t, k); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const run = async (fn) => { try { return await fn(); } catch (e) { say(e.message, 'err'); } };
+
+let elections = [], sel = null, tab = 'candidates', timer = null;
+let vs = { kind: 'eligible', q: '', page: 0 };
+
+// ---------- elections list ----------
+async function loadElections() {
+  elections = await api('/admin/elections');
+  $('#elections').innerHTML = elections.length
+    ? `<table><thead><tr><th>Title</th><th>Voting window</th><th>Status</th><th>Results shown</th><th></th></tr></thead><tbody>${elections.map((e) => `<tr>
+        <td>${esc(e.title)}</td><td>${esc(fmt(e.startTime))} to ${esc(fmt(e.endTime))}</td><td>${statusTag(e.status)}</td>
+        <td>${MODES[e.resultMode]}</td><td><button class="btn plain small" data-manage="${e.id}">Manage</button></td></tr>`).join('')}</tbody></table>`
+    : '<p class="empty">No elections yet. Create the first one below.</p>';
+}
+$('#elections').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-manage]'); if (!b) return;
+  sel = elections.find((e) => e.id === Number(b.dataset.manage)); tab = 'candidates'; vs = { kind: 'eligible', q: '', page: 0 };
+  renderManage(); $('#manage').scrollIntoView({ behavior: 'smooth' });
+});
+$('#n_mode').onchange = () => { $('#n_pubWrap').hidden = $('#n_mode').value !== 'SCHEDULED'; };
+$('#newForm').addEventListener('submit', (ev) => { ev.preventDefault(); run(async () => {
+  const mode = $('#n_mode').value;
+  await api('/admin/elections', { method: 'POST', body: {
+    title: $('#n_title').value, description: $('#n_desc').value, startTime: iso($('#n_start').value), endTime: iso($('#n_end').value),
+    resultMode: mode, resultsPublishAt: mode === 'SCHEDULED' && $('#n_pub').value ? iso($('#n_pub').value) : null, restrictToEligibleList: $('#n_restrict').checked } });
+  ev.target.reset(); $('#n_pubWrap').hidden = true; say('Election created. Select Manage to add candidates and voters.');
+  await loadElections(); loadAudit();
+}); });
+
+// ---------- manage panel ----------
+async function reload() { await loadElections(); sel = elections.find((e) => sel && e.id === sel.id) || null; renderManage(); loadAudit(); }
+function renderManage() {
+  clearInterval(timer);
+  const box = $('#manage');
+  if (!sel) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<h2>${esc(sel.title)} ${statusTag(sel.status)}</h2>
+    <p class="meta">Voting ${esc(fmt(sel.startTime))} to ${esc(fmt(sel.endTime))}. ${sel.restrictToEligibleList ? 'Restricted to the voter list.' : 'Open to any college email.'}</p>
+    <nav class="tabs">${Object.entries(TABS).map(([k, v]) => `<a href="#" data-act="tab" data-tab="${k}" class="${k === tab ? 'on' : ''}">${v}</a>`).join('')}</nav>
+    <div id="tabBody"></div>`;
+  run(() => ({ candidates: tabCandidates, voters: tabVoters, turnout: tabTurnout, results: tabResults, settings: tabSettings }[tab]()));
+}
+
+const PHOTO_OK = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+function checkPhoto(f) {
+  if (!f) return;
+  if (!PHOTO_OK.includes(f.type)) throw new Error('Use a JPG, PNG, WebP or GIF image.');
+  if (f.size > 2 * 1024 * 1024) throw new Error('The image must be 2 MB or smaller.');
+}
+async function uploadPhoto(id, file) {
+  const fd = new FormData(); fd.append('file', file);
+  return api(`/admin/candidates/${id}/photo`, { method: 'POST', body: fd });
+}
+const thumb = (c) => c.photoUrl ? `<img class="thumb" src="${esc(c.photoUrl)}" alt="Photo of ${esc(c.name)}">` : '<span class="thumb none" aria-hidden="true"></span>';
+
+async function tabCandidates() {
+  const list = await api(`/admin/elections/${sel.id}/candidates`);
+  $('#tabBody').innerHTML = (list.length
+    ? `<table><thead><tr><th>Photo</th><th>Name</th><th>Description</th><th></th></tr></thead><tbody>${list.map((c) => `<tr><td>${thumb(c)}</td><td>${esc(c.name)}</td><td>${esc(c.description)}</td>
+        <td><label class="btn plain small filebtn">${c.photoUrl ? 'Change photo' : 'Add photo'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-photo="${c.id}" hidden></label>
+        ${c.photoUrl ? `<button class="btn plain small" data-act="delPhoto" data-id="${c.id}">Remove photo</button>` : ''}
+        <button class="btn danger small" data-act="delCand" data-id="${c.id}">Remove</button></td></tr>`).join('')}</tbody></table>`
+    : '<p class="empty">No candidates yet.</p>')
+    + `<h3>Add a candidate</h3><form data-form="cand"><label for="c_name">Name</label><input id="c_name" type="text" required maxlength="150">
+       <label for="c_desc">Short description (optional)</label><input id="c_desc" type="text" maxlength="1000">
+       <label for="c_photo">Photo (optional)</label><input id="c_photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+       <p class="hint">JPG, PNG, WebP or GIF, up to 2 MB. A square photo looks best.</p>
+       <button class="btn">Add candidate</button></form>
+       <p class="hint">The candidate list and photos lock once the first vote is cast.</p>`;
+}
+
+async function tabVoters() {
+  $('#tabBody').innerHTML = `<form data-form="upload"><label for="csv">Upload voter list (CSV)</label>
+    <input id="csv" type="file" accept=".csv,text/csv" required>
+    <p class="hint">Columns: email, name, roll_number. A header row is optional. Emails are lowercased and duplicates are skipped.</p>
+    <button class="btn">Upload list</button></form><div id="uploadResult"></div>
+    <h3>People on the list</h3><div id="rowsWrap"></div>`;
+  vs = { kind: 'eligible', q: '', page: 0 };
+  await rows();
+}
+
+async function tabTurnout() {
+  const t = await api(`/admin/elections/${sel.id}/turnout`);
+  $('#tabBody').innerHTML = `<dl class="figures"><div><dt>On the list</dt><dd>${t.eligible}</dd></div><div><dt>Voted</dt><dd>${t.voted}</dd></div>
+    <div><dt>Not yet voted</dt><dd>${t.pending}</dd></div><div><dt>Turnout</dt><dd>${t.turnoutPercent}%</dd></div></dl>
+    <p class="hint">This shows who has voted, never who they voted for.</p>
+    <nav class="tabs"><a href="#" data-act="kind" data-kind="voted" class="on">Voted</a><a href="#" data-act="kind" data-kind="notvoted">Not yet voted</a></nav>
+    <div id="rowsWrap"></div>
+    <div class="row" style="margin-top:16px"><button class="btn plain" data-act="export" data-type="voted">Download voted list</button>
+    <button class="btn plain" data-act="export" data-type="not-voted">Download not-voted list</button></div>`;
+  vs = { kind: 'voted', q: '', page: 0 };
+  await rows();
+}
+
+async function rows() {
+  const path = { eligible: 'eligible', voted: 'voted', notvoted: 'not-voted' }[vs.kind];
+  const d = await api(`/admin/elections/${sel.id}/voters/${path}?q=${encodeURIComponent(vs.q)}&page=${vs.page}&size=20`);
+  const showTime = vs.kind === 'voted', canRemove = vs.kind === 'eligible';
+  const pages = Math.max(1, Math.ceil(d.total / d.size));
+  $('#rowsWrap').innerHTML = `<form data-form="search" class="row"><input type="search" id="q" placeholder="Search by email" value="${esc(vs.q)}" aria-label="Search by email" style="margin:0">
+    <button class="btn plain small">Search</button></form>` + (d.items.length
+    ? `<div class="scroll"><table style="margin-top:12px"><thead><tr><th>Email</th><th>Name</th>${showTime ? '<th>Voted at</th>' : ''}${canRemove ? '<th></th>' : ''}</tr></thead><tbody>${d.items.map((r) => `<tr>
+        <td>${esc(r.email)}</td><td>${esc(r.name)}</td>${showTime ? `<td>${esc(fmt(r.votedAt))}</td>` : ''}
+        ${canRemove ? `<td><button class="btn danger small" data-act="delVoter" data-email="${esc(r.email)}">Remove</button></td>` : ''}</tr>`).join('')}</tbody></table></div>
+      <div class="pager"><button class="btn plain small" data-act="page" data-d="-1" ${vs.page === 0 ? 'disabled' : ''}>Previous</button>
+      <span>Page ${vs.page + 1} of ${pages}, ${d.total} in total</span>
+      <button class="btn plain small" data-act="page" data-d="1" ${vs.page + 1 >= pages ? 'disabled' : ''}>Next</button></div>`
+    : '<p class="empty" style="margin-top:12px">Nobody to show here yet.</p>');
+}
+
+async function tabResults() {
+  const draw = async () => {
+    const r = await api(`/admin/elections/${sel.id}/results`);
+    const el = $('#adminBars'); if (el) el.innerHTML = resultRows(r);
+  };
+  const showAt = sel.resultMode === 'SCHEDULED' && sel.resultsPublishAt ? localInput(sel.resultsPublishAt) : '';
+  $('#tabBody').innerHTML = `<p class="meta">You always see live counts here. Voters see them: <strong>${MODES[sel.resultMode].toLowerCase()}</strong>${sel.resultMode === 'SCHEDULED' && sel.resultsPublishAt ? ' (' + esc(fmt(sel.resultsPublishAt)) + ')' : ''}.
+    Right now voters ${sel.resultsVisible ? 'can' : 'cannot'} see them.</p>
+    <div id="adminBars"></div>
+    <div class="row" style="margin:14px 0"><button class="btn plain" data-act="export-results">Download results (CSV)</button>
+    ${sel.resultMode === 'MANUAL' && !sel.resultsPublished ? '<button class="btn" data-act="publish">Publish results to voters</button>' : ''}</div>
+    <h3>When voters see results</h3>
+    <form data-form="resultSettings"><label for="r_mode">Mode</label>
+    <select id="r_mode">${Object.entries(MODES).map(([k, v]) => `<option value="${k}" ${k === sel.resultMode ? 'selected' : ''}>${v}</option>`).join('')}</select>
+    <div id="r_pubWrap" ${sel.resultMode === 'SCHEDULED' ? '' : 'hidden'}><label for="r_pub">Publish at</label><input id="r_pub" type="datetime-local" value="${showAt}"></div>
+    <button class="btn">Save result setting</button></form>`;
+  $('#r_mode').onchange = () => { $('#r_pubWrap').hidden = $('#r_mode').value !== 'SCHEDULED'; };
+  await draw();
+  timer = setInterval(() => draw().catch(() => {}), 8000);
+}
+
+async function tabSettings() {
+  const upcoming = sel.status === 'UPCOMING';
+  $('#tabBody').innerHTML = `${upcoming ? `<form data-form="edit"><label for="e_title">Title</label><input id="e_title" type="text" required maxlength="200" value="${esc(sel.title)}">
+    <label for="e_desc">Description</label><textarea id="e_desc" maxlength="2000">${esc(sel.description || '')}</textarea>
+    <label for="e_start">Voting opens</label><input id="e_start" type="datetime-local" required value="${localInput(sel.startTime)}">
+    <label for="e_end">Voting closes</label><input id="e_end" type="datetime-local" required value="${localInput(sel.endTime)}">
+    <label class="check"><input id="e_restrict" type="checkbox" ${sel.restrictToEligibleList ? 'checked' : ''}> Only people on the voter list can vote</label>
+    <button class="btn">Save changes</button></form>` : '<p class="meta">Details can only be edited before voting starts.</p>'}
+    <h3>Close or delete</h3><div class="row">
+    ${sel.status !== 'CLOSED' ? '<button class="btn plain" data-act="close">Close voting now</button>' : ''}
+    <button class="btn danger" data-act="deleteElection">Delete this election</button></div>
+    <p class="hint">An election with votes cannot be deleted.</p>`;
+}
+
+// ---------- actions and forms ----------
+const actions = {
+  tab: (t) => { tab = t.dataset.tab; renderManage(); },
+  kind: (t) => { vs = { kind: t.dataset.kind, q: '', page: 0 }; document.querySelectorAll('#tabBody .tabs a').forEach((a) => a.classList.toggle('on', a === t)); return rows(); },
+  page: (t) => { vs.page = Math.max(0, vs.page + Number(t.dataset.d)); return rows(); },
+  delPhoto: async (t) => { if (!confirm('Remove this photo?')) return; await api(`/admin/candidates/${t.dataset.id}/photo`, { method: 'DELETE' }); say('Photo removed.'); await tabCandidates(); loadAudit(); },
+  delCand: async (t) => { if (!confirm('Remove this candidate?')) return; await api(`/admin/candidates/${t.dataset.id}`, { method: 'DELETE' }); say('Candidate removed.'); await tabCandidates(); loadAudit(); },
+  delVoter: async (t) => { if (!confirm('Remove ' + t.dataset.email + ' from the voter list?')) return; await api(`/admin/elections/${sel.id}/voters/${encodeURIComponent(t.dataset.email)}`, { method: 'DELETE' }); say('Voter removed.'); await rows(); loadAudit(); },
+  export: async (t) => { await download(`/admin/elections/${sel.id}/voters/export?type=${t.dataset.type}`, `election-${sel.id}-${t.dataset.type}.csv`); loadAudit(); },
+  'export-results': async () => { await download(`/admin/elections/${sel.id}/results/export`, `election-${sel.id}-results.csv`); loadAudit(); },
+  publish: async () => { if (!confirm('Publish results to all voters now?')) return; await api(`/admin/elections/${sel.id}/publish-results`, { method: 'POST' }); say('Results published.'); await reload(); },
+  close: async () => { if (!confirm('Close voting now? This cannot be undone.')) return; await api(`/admin/elections/${sel.id}/close`, { method: 'PUT' }); say('Voting closed.'); await reload(); },
+  deleteElection: async () => { if (!confirm('Delete this election, its candidates and its voter list?')) return; await api(`/admin/elections/${sel.id}`, { method: 'DELETE' }); say('Election deleted.'); sel = null; await reload(); },
+};
+const forms = {
+  cand: async () => {
+    const file = $('#c_photo').files[0];
+    checkPhoto(file);
+    const c = await api(`/admin/elections/${sel.id}/candidates`, { method: 'POST', body: { name: $('#c_name').value, description: $('#c_desc').value } });
+    let failed = null;
+    if (file) { try { await uploadPhoto(c.id, file); } catch (e) { failed = e.message; } }
+    if (failed) say('Candidate added, but the photo was not saved: ' + failed, 'err'); else say('Candidate added.');
+    await tabCandidates(); loadAudit();
+  },
+  upload: async () => {
+    const fd = new FormData(); fd.append('file', $('#csv').files[0]);
+    const s = await api(`/admin/elections/${sel.id}/voters/upload`, { method: 'POST', body: fd });
+    $('#uploadResult').innerHTML = `<p class="msg ok">${s.added} added, ${s.duplicates} duplicates skipped, ${s.invalid} rows rejected.${s.invalidRows.length ? ' Rejected: ' + esc(s.invalidRows.join(' | ')) : ''}</p>`;
+    vs.page = 0; await rows(); loadAudit();
+  },
+  search: async () => { vs.q = $('#q').value.trim(); vs.page = 0; await rows(); },
+  resultSettings: async () => {
+    const mode = $('#r_mode').value;
+    await api(`/admin/elections/${sel.id}/result-settings`, { method: 'PUT', body: { mode, resultsPublishAt: mode === 'SCHEDULED' && $('#r_pub').value ? iso($('#r_pub').value) : null } });
+    say('Result setting saved.'); await reload();
+  },
+  edit: async () => {
+    await api(`/admin/elections/${sel.id}`, { method: 'PUT', body: { title: $('#e_title').value, description: $('#e_desc').value, startTime: iso($('#e_start').value), endTime: iso($('#e_end').value),
+      resultMode: sel.resultMode, resultsPublishAt: sel.resultsPublishAt, restrictToEligibleList: $('#e_restrict').checked } });
+    say('Changes saved.'); await reload();
+  },
+};
+$('#manage').addEventListener('click', (ev) => { const t = ev.target.closest('[data-act]'); if (!t) return; ev.preventDefault(); run(() => actions[t.dataset.act](t)); });
+$('#manage').addEventListener('change', (ev) => {
+  const input = ev.target.closest('[data-photo]'); if (!input || !input.files[0]) return;
+  run(async () => {
+    const f = input.files[0]; checkPhoto(f);
+    await uploadPhoto(input.dataset.photo, f); say('Photo saved.'); await tabCandidates(); loadAudit();
+  });
+});
+$('#manage').addEventListener('submit', (ev) => { ev.preventDefault(); run(() => forms[ev.target.dataset.form]()); });
+
+async function loadAudit() {
+  try {
+    const d = await api('/admin/audit-logs?size=15');
+    $('#audit').innerHTML = d.items.length
+      ? `<table><thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Details</th></tr></thead><tbody>${d.items.map((a) => `<tr><td>${esc(fmt(a.createdAt))}</td><td>${esc(a.adminEmail)}</td><td>${esc(a.action)}</td><td>${esc(a.details)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="empty">Nothing has been recorded yet.</p>';
+  } catch (_) {}
+}
+run(async () => { await loadElections(); loadAudit(); });
+</script>
+</body>
+</html>
