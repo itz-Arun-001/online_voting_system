@@ -71,8 +71,10 @@ public class ElectionService {
     }
 
     public boolean isEligible(Election e, String email) {
-        if (!isAllowedDomain(e, email)) return false;
-        return !e.isRestrictToEligibleList() || eligible.existsByElectionIdAndEmail(e.getId(), email);
+        String norm = EmailUtil.normalize(email);
+        if (norm == null) return false;
+        if (!isAllowedDomain(e, norm)) return false;
+        return !e.isRestrictToEligibleList() || eligible.existsByElectionIdAndEmail(e.getId(), norm);
     }
 
     /** True if this email could vote in at least one election, which is what allows an OTP to be issued. */
@@ -101,7 +103,9 @@ public class ElectionService {
 
     /** Returns true if the email ends with one of this election's allowed domains. */
     public boolean isAllowedDomain(Election e, String email) {
-        return effectiveDomains(e).stream().anyMatch(domain -> email != null && email.endsWith("@" + domain));
+        String norm = EmailUtil.normalize(email);
+        if (norm == null) return false;
+        return effectiveDomains(e).stream().anyMatch(domain -> norm.endsWith("@" + domain));
     }
 
     /**

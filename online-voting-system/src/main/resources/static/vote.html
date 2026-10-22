@@ -85,7 +85,7 @@ async function load() {
     const list = await api('/elections');
     root.innerHTML = '';
     if (!list.length) {
-      root.innerHTML = '<p class="empty">There are no elections for you right now. If you expected one, ask your election admin to check that your email is on the voter list.</p>';
+      root.innerHTML = '<p class="empty">There are no elections for your account right now. Check back when voting opens, or contact your election administrator.</p>';
       return;
     }
     for (const e of list) await renderElection(e);

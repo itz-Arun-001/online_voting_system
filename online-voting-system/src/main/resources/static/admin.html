@@ -30,11 +30,32 @@
           <option value="MANUAL">When I publish them</option>
         </select>
         <div id="n_pubWrap" hidden><label for="n_pub">Publish results at</label><input id="n_pub" type="datetime-local"></div>
-        <label for="n_domains">Allowed email domains (optional)</label>
-        <input id="n_domains" type="text" maxlength="1000" placeholder="e.g. student.annauniv.edu, staff.annauniv.edu">
-        <p class="hint">Comma-separated domains whose email addresses can sign in and vote in this election. Leave blank to use the global college domain only.</p>
-        <label class="check"><input id="n_restrict" type="checkbox"> Restrict voting to uploaded CSV voter list only (leave unchecked to allow ALL students with the allowed domain to vote)</label>
-        <button class="btn">Create election</button>
+
+        <label style="margin-top:16px;font-weight:bold">How should voters be authorized?</label>
+        <div style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px;margin:8px 0 16px 0">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:12px;font-weight:normal">
+            <input type="radio" name="n_eligibility" value="domain" checked style="margin-top:4px">
+            <div>
+              <strong>Option 1: Vote by College Mail ID Domain</strong>
+              <div class="hint" style="margin:2px 0 0 0">Anyone with an allowed college email address can vote directly. No CSV voter list required.</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0;font-weight:normal">
+            <input type="radio" name="n_eligibility" value="voterlist" style="margin-top:4px">
+            <div>
+              <strong>Option 2: Vote by Voter List (CSV)</strong>
+              <div class="hint" style="margin:2px 0 0 0">Only students specifically uploaded in a CSV file can vote.</div>
+            </div>
+          </label>
+        </div>
+
+        <div id="n_domainsWrap">
+          <label for="n_domains">Allowed college mail ID domain(s)</label>
+          <input id="n_domains" type="text" maxlength="1000" placeholder="e.g. student.annauniv.edu">
+          <p class="hint">Comma-separated domains (without leading @). Leave blank to use the default college domain.</p>
+        </div>
+
+        <button class="btn" style="margin-top:16px">Create election</button>
       </form>
     </details>
   </section>
@@ -64,10 +85,10 @@ let vs = { kind: 'eligible', q: '', page: 0 };
 async function loadElections() {
   elections = await api('/admin/elections');
   $('#elections').innerHTML = elections.length
-    ? `<table><thead><tr><th>Title</th><th>Voting window</th><th>Status</th><th>Results shown</th><th>Allowed domains</th><th></th></tr></thead><tbody>${elections.map((e) => `<tr>
+    ? `<table><thead><tr><th>Title</th><th>Voting window</th><th>Status</th><th>Voting method</th><th>Results shown</th><th></th></tr></thead><tbody>${elections.map((e) => `<tr>
         <td>${esc(e.title)}</td><td>${esc(fmt(e.startTime))} to ${esc(fmt(e.endTime))}</td><td>${statusTag(e.status)}</td>
+        <td>${e.restrictToEligibleList ? '<span class="tag">Voter list (CSV)</span>' : '<span class="tag ok">Domain: ' + esc(e.allowedDomains || '(default domain)') + '</span>'}</td>
         <td>${MODES[e.resultMode]}</td>
-        <td><code style="font-size:0.85em">${esc(e.allowedDomains || '(global)')}</code></td>
         <td><button class="btn plain small" data-manage="${e.id}">Manage</button></td></tr>`).join('')}</tbody></table>`
     : '<p class="empty">No elections yet. Create the first one below.</p>';
 }
@@ -79,12 +100,13 @@ $('#elections').addEventListener('click', (ev) => {
 $('#n_mode').onchange = () => { $('#n_pubWrap').hidden = $('#n_mode').value !== 'SCHEDULED'; };
 $('#newForm').addEventListener('submit', (ev) => { ev.preventDefault(); run(async () => {
   const mode = $('#n_mode').value;
+  const isVoterList = $('input[name="n_eligibility"]:checked').value === 'voterlist';
   await api('/admin/elections', { method: 'POST', body: {
     title: $('#n_title').value, description: $('#n_desc').value, startTime: iso($('#n_start').value), endTime: iso($('#n_end').value),
     resultMode: mode, resultsPublishAt: mode === 'SCHEDULED' && $('#n_pub').value ? iso($('#n_pub').value) : null,
-    restrictToEligibleList: $('#n_restrict').checked,
+    restrictToEligibleList: isVoterList,
     allowedDomains: $('#n_domains').value.trim() || null } });
-  ev.target.reset(); $('#n_pubWrap').hidden = true; say('Election created. Select Manage to add candidates and voters.');
+  ev.target.reset(); $('#n_pubWrap').hidden = true; say('Election created. Select Manage to add candidates.');
   await loadElections(); loadAudit();
 }); });
 
@@ -95,9 +117,11 @@ function renderManage() {
   const box = $('#manage');
   if (!sel) { box.hidden = true; return; }
   box.hidden = false;
-  const domainInfo = sel.allowedDomains ? ` Allowed domains: <code>${esc(sel.allowedDomains)}</code>.` : '';
+  const methodText = sel.restrictToEligibleList
+    ? '<strong>Restricted to uploaded CSV voter list.</strong>'
+    : `<strong>Open to all voters with domain: <code>${esc(sel.allowedDomains || '(default college domain)')}</code> (no CSV required).</strong>`;
   box.innerHTML = `<h2>${esc(sel.title)} ${statusTag(sel.status)}</h2>
-    <p class="meta">Voting ${esc(fmt(sel.startTime))} to ${esc(fmt(sel.endTime))}. ${sel.restrictToEligibleList ? 'Restricted to the voter list.' : 'Open to any allowed domain.'}${domainInfo}</p>
+    <p class="meta">Voting ${esc(fmt(sel.startTime))} to ${esc(fmt(sel.endTime))}. ${methodText}</p>
     <nav class="tabs">${Object.entries(TABS).map(([k, v]) => `<a href="#" data-act="tab" data-tab="${k}" class="${k === tab ? 'on' : ''}">${v}</a>`).join('')}</nav>
     <div id="tabBody"></div>`;
   run(() => ({ candidates: tabCandidates, voters: tabVoters, turnout: tabTurnout, results: tabResults, settings: tabSettings }[tab]()));
@@ -133,7 +157,10 @@ async function tabCandidates() {
 
 async function tabVoters() {
   const domains = sel.allowedDomains || '(global college domain)';
-  $('#tabBody').innerHTML = `<form data-form="upload"><label for="csv">Upload voter list (CSV)</label>
+  const banner = sel.restrictToEligibleList
+    ? '<p class="msg ok" style="margin-bottom:12px">This election is set to <strong>Option 2: Vote by Voter List</strong>. Only voters uploaded below can vote.</p>'
+    : '<p class="msg ok" style="margin-bottom:12px">This election is set to <strong>Option 1: Vote by College Mail ID Domain</strong>. Any voter whose email ends with <code>' + esc(domains) + '</code> can vote directly without uploading a CSV file! (To switch to a CSV voter list, change the option in the <strong>Election settings</strong> tab).</p>';
+  $('#tabBody').innerHTML = banner + `<form data-form="upload"><label for="csv">Upload voter list (CSV)</label>
     <input id="csv" type="file" accept=".csv,text/csv" required>
     <p class="hint">Columns: email, name, roll_number. A header row is optional. Emails are lowercased and duplicates are skipped. Only emails from: <strong>${esc(domains)}</strong> are accepted.</p>
     <button class="btn">Upload list</button></form><div id="uploadResult"></div>
@@ -198,11 +225,29 @@ async function tabSettings() {
     <label for="e_desc">Description</label><textarea id="e_desc" maxlength="2000">${esc(sel.description || '')}</textarea>
     <label for="e_start">Voting opens</label><input id="e_start" type="datetime-local" required value="${localInput(sel.startTime)}">
     <label for="e_end">Voting closes</label><input id="e_end" type="datetime-local" required value="${localInput(sel.endTime)}">
-    <label class="check"><input id="e_restrict" type="checkbox" ${sel.restrictToEligibleList ? 'checked' : ''}> Restrict voting to uploaded CSV voter list only (uncheck to allow ALL students with the allowed domain to vote)</label>
-    <label for="e_domains">Allowed email domains (optional)</label>
-    <input id="e_domains" type="text" maxlength="1000" value="${esc(sel.allowedDomains || '')}" placeholder="e.g. student.annauniv.edu, staff.annauniv.edu">
-    <p class="hint">Comma-separated. Leave blank to use the global college domain.</p>
-    <button class="btn">Save changes</button></form>` : '<p class="meta">Details can only be edited before voting starts.</p>'}
+
+    <label style="margin-top:16px;font-weight:bold">How should voters be authorized?</label>
+    <div style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px;margin:8px 0 16px 0">
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:12px;font-weight:normal">
+        <input type="radio" name="e_eligibility" value="domain" ${!sel.restrictToEligibleList ? 'checked' : ''} style="margin-top:4px">
+        <div>
+          <strong>Option 1: Vote by College Mail ID Domain</strong>
+          <div class="hint" style="margin:2px 0 0 0">Anyone with an allowed college email address can vote directly. No CSV voter list required.</div>
+        </div>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0;font-weight:normal">
+        <input type="radio" name="e_eligibility" value="voterlist" ${sel.restrictToEligibleList ? 'checked' : ''} style="margin-top:4px">
+        <div>
+          <strong>Option 2: Vote by Voter List (CSV)</strong>
+          <div class="hint" style="margin:2px 0 0 0">Only students specifically uploaded in a CSV file can vote.</div>
+        </div>
+      </label>
+    </div>
+
+    <label for="e_domains">Allowed college mail ID domain(s)</label>
+    <input id="e_domains" type="text" maxlength="1000" value="${esc(sel.allowedDomains || '')}" placeholder="e.g. student.annauniv.edu">
+    <p class="hint">Comma-separated domains (without leading @). Leave blank to use the default college domain.</p>
+    <button class="btn" style="margin-top:16px">Save changes</button></form>` : '<p class="meta">Details can only be edited before voting starts.</p>'}
     <h3>Close or delete</h3><div class="row">
     ${sel.status !== 'CLOSED' ? '<button class="btn plain" data-act="close">Close voting now</button>' : ''}
     <button class="btn danger" data-act="deleteElection">Delete this election</button></div>
@@ -246,11 +291,12 @@ const forms = {
     say('Result setting saved.'); await reload();
   },
   edit: async () => {
+    const isVoterList = $('input[name="e_eligibility"]:checked').value === 'voterlist';
     await api(`/admin/elections/${sel.id}`, { method: 'PUT', body: {
       title: $('#e_title').value, description: $('#e_desc').value,
       startTime: iso($('#e_start').value), endTime: iso($('#e_end').value),
       resultMode: sel.resultMode, resultsPublishAt: sel.resultsPublishAt,
-      restrictToEligibleList: $('#e_restrict').checked,
+      restrictToEligibleList: isVoterList,
       allowedDomains: $('#e_domains').value.trim() || null } });
     say('Changes saved.'); await reload();
   },
