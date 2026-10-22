@@ -29,11 +29,26 @@ public class AuthService {
         String email = EmailUtil.normalize(rawEmail);
         if (!EmailUtil.isValid(email)) throw ApiException.badRequest("Enter a valid email address.");
 
+        boolean isAdmin = props.isAdminEmail(email);
+
+        // Verify the email's domain actually has active mail servers
+        String domain = EmailUtil.getDomain(email);
+        if (!EmailUtil.hasValidMailServer(domain)) {
+            throw ApiException.badRequest("The domain '@" + domain + "' does not exist or has no active mail server.");
+        }
+
         // Accept admins, or emails matching the global college domain OR any per-election allowed domain
-        boolean domainAllowed = props.isAdminEmail(email) || electionService.isEmailDomainAllowedAnywhere(email, props);
+        boolean domainAllowed = isAdmin || electionService.isEmailDomainAllowedAnywhere(email, props);
         if (!domainAllowed) {
             String hint = electionService.allKnownDomainsHint(props);
             throw ApiException.badRequest("Use your college email address (ending in " + hint + ").");
+        }
+
+        // Verify voter registration / eligibility for an active election
+        boolean hasAccess = isAdmin || electionService.hasAnyAccessWithDomains(email);
+        if (!hasAccess) {
+            throw ApiException.badRequest("This email is not registered for any election. "
+                    + "If your election requires a voter list, please ensure your email was added by the administrator.");
         }
 
         var rl = props.getRateLimit();
@@ -41,11 +56,10 @@ public class AuthService {
         rateLimit.check("otp:email:" + email, rl.getOtpRequests(), window);
         rateLimit.check("otp:ip:" + ip, rl.getOtpIpRequests(), window);
 
-        // Issue and send OTP to any authorized domain email or admin
-        if (domainAllowed) {
-            String code = otpService.issue(email);
-            emailService.sendOtp(email, code);
-        }
+        // Issue code and send email
+        String code = otpService.issue(email);
+        emailService.sendOtp(email, code);
+
         return new MessageResponse("A sign-in code has been sent to your email.");
     }
 

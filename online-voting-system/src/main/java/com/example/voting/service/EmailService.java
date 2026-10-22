@@ -1,6 +1,7 @@
 package com.example.voting.service;
 
 import com.example.voting.config.AppProperties;
+import com.example.voting.exception.ApiException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -13,7 +14,6 @@ import org.springframework.core.env.Profiles;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -57,7 +57,6 @@ public class EmailService {
         }
     }
 
-    @Async
     public void sendOtp(String to, String code) {
         JavaMailSender sender = activeSender();
         if (sender == null) {
@@ -65,6 +64,7 @@ public class EmailService {
                 log.warn("SMTP not configured (dev). OTP for {} is {}", to, code);
             } else {
                 log.error("SMTP is not configured: cannot send the sign-in code to {}. Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD.", to);
+                throw ApiException.badRequest("Email service is not configured on the server.");
             }
             return;
         }
@@ -83,8 +83,16 @@ public class EmailService {
             helper.setText(text, html);
             sender.send(message);
             log.info("Sent real voting OTP email to {}", to);
+        } catch (ApiException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.error("Could not send the sign-in code to {}: {}", to, ex.getMessage());
+            String errorMsg = ex.getMessage() != null ? ex.getMessage() : "";
+            if (errorMsg.contains("550") || errorMsg.contains("5.1.1") || errorMsg.toLowerCase().contains("does not exist")
+                    || errorMsg.toLowerCase().contains("invalid addresses") || errorMsg.toLowerCase().contains("recipient address rejected")) {
+                throw ApiException.badRequest("The email address does not exist or was rejected by the mail server.");
+            }
+            throw ApiException.badRequest("Failed to deliver email to " + to + ". Please ensure the address exists and is correct.");
         }
     }
 }
