@@ -325,7 +325,7 @@ erDiagram
 ### 1. Run locally (about 2 minutes)
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/itz-Arun-001/online_voting_system
 cd online-voting-system
 mvn spring-boot:run
 ```
