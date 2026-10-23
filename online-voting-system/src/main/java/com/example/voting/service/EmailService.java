@@ -16,6 +16,13 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+
 @Service
 @RequiredArgsConstructor
 public class EmailService {
@@ -36,18 +43,26 @@ public class EmailService {
 
     private String resolveFrom(JavaMailSender sender) {
         String from = props.getMailFrom();
-        if (from != null && !from.isBlank()) {
+        if (from != null && !from.isBlank() && !from.equals("no-reply@voting.local")) {
             return from.trim();
         }
         if (sender instanceof JavaMailSenderImpl impl && impl.getUsername() != null && !impl.getUsername().isBlank()) {
             return impl.getUsername().trim();
         }
-        return "no-reply@voting.local";
+        return from != null && !from.isBlank() ? from.trim() : "no-reply@voting.local";
     }
 
     /** One clear line at startup so it is obvious whether real emails will go out. */
     @EventListener(ApplicationReadyEvent.class)
     public void logMailStatus() {
+        if (props.getBrevoApiKey() != null && !props.getBrevoApiKey().isBlank()) {
+            log.info("Email is configured via Brevo HTTPS API (Port 443, cloud firewall friendly).");
+            return;
+        }
+        if (props.getResendApiKey() != null && !props.getResendApiKey().isBlank()) {
+            log.info("Email is configured via Resend HTTPS API (Port 443, cloud firewall friendly).");
+            return;
+        }
         JavaMailSender sender = activeSender();
         if (sender == null) {
             log.warn("Email is NOT configured: sign-in codes are only printed in this console (dev). Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD in .env to send real emails.");
@@ -58,18 +73,43 @@ public class EmailService {
     }
 
     public void sendOtp(String to, String code) {
+        int minutes = props.getOtp().getExpiryMinutes();
+
+        // 1. Check Brevo HTTP API (Port 443 - works on Render, Railway, AWS without blocked ports)
+        if (props.getBrevoApiKey() != null && !props.getBrevoApiKey().isBlank()) {
+            try {
+                sendViaBrevo(props.getBrevoApiKey().trim(), to, code, minutes);
+                return;
+            } catch (Exception ex) {
+                log.error("Could not send code via Brevo API to {}: {}", to, ex.getMessage());
+                throw ApiException.badRequest("Failed to deliver email via Brevo to " + to + ". Check API key or sender settings.");
+            }
+        }
+
+        // 2. Check Resend HTTP API (Port 443)
+        if (props.getResendApiKey() != null && !props.getResendApiKey().isBlank()) {
+            try {
+                sendViaResend(props.getResendApiKey().trim(), to, code, minutes);
+                return;
+            } catch (Exception ex) {
+                log.error("Could not send code via Resend API to {}: {}", to, ex.getMessage());
+                throw ApiException.badRequest("Failed to deliver email via Resend to " + to + ". Check API key or sender settings.");
+            }
+        }
+
+        // 3. Fallback to standard SMTP
         JavaMailSender sender = activeSender();
         if (sender == null) {
             if (env.acceptsProfiles(Profiles.of("dev"))) {
                 log.warn("SMTP not configured (dev). OTP for {} is {}", to, code);
             } else {
-                log.error("SMTP is not configured: cannot send the sign-in code to {}. Set SMTP_HOST, SMTP_USER and SMTP_PASSWORD.", to);
+                log.error("SMTP is not configured: cannot send the sign-in code to {}. Set BREVO_API_KEY, RESEND_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASSWORD.", to);
                 throw ApiException.badRequest("Email service is not configured on the server.");
             }
             return;
         }
+
         try {
-            int minutes = props.getOtp().getExpiryMinutes();
             MimeMessage message = sender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setFrom(resolveFrom(sender));
@@ -94,5 +134,70 @@ public class EmailService {
             }
             throw ApiException.badRequest("Failed to deliver email to " + to + ". Please ensure the address exists and is correct.");
         }
+    }
+
+    private void sendViaBrevo(String apiKey, String to, String code, int minutes) throws Exception {
+        JavaMailSender sender = mailSender.getIfAvailable();
+        String from = resolveFrom(sender);
+        if (from.equals("no-reply@voting.local")) {
+            from = "arun0012007@gmail.com";
+        }
+
+        String json = """
+            {
+              "sender": {"email": "%s", "name": "College Election"},
+              "to": [{"email": "%s"}],
+              "subject": "Your voting code: %s",
+              "htmlContent": "<p>Your sign-in code is</p><p style=\\"font-size:28px;letter-spacing:4px;font-family:monospace\\"><b>%s</b></p><p>It expires in %d minutes. If you did not ask for it, you can ignore this email.</p>"
+            }
+            """.formatted(from, to, code, code, minutes);
+
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
+                .header("api-key", apiKey)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .timeout(Duration.ofSeconds(10))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() >= 400) {
+            log.error("Brevo API returned error status {}: {}", response.statusCode(), response.body());
+            throw new RuntimeException("Brevo API error " + response.statusCode() + ": " + response.body());
+        }
+        log.info("Sent real voting OTP email to {} via Brevo HTTPS API", to);
+    }
+
+    private void sendViaResend(String apiKey, String to, String code, int minutes) throws Exception {
+        JavaMailSender sender = mailSender.getIfAvailable();
+        String from = resolveFrom(sender);
+        String senderEmail = from.contains("@") && !from.endsWith("@voting.local") ? from : "onboarding@resend.dev";
+
+        String json = """
+            {
+              "from": "%s",
+              "to": ["%s"],
+              "subject": "Your voting code: %s",
+              "html": "<p>Your sign-in code is</p><p style=\\"font-size:28px;letter-spacing:4px;font-family:monospace\\"><b>%s</b></p><p>It expires in %d minutes.</p>"
+            }
+            """.formatted(senderEmail, to, code, code, minutes);
+
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.resend.com/emails"))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json, StandardCharsets.UTF_8))
+                .timeout(Duration.ofSeconds(10))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() >= 400) {
+            log.error("Resend API returned error status {}: {}", response.statusCode(), response.body());
+            throw new RuntimeException("Resend API error " + response.statusCode() + ": " + response.body());
+        }
+        log.info("Sent real voting OTP email to {} via Resend HTTPS API", to);
     }
 }

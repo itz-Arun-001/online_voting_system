@@ -18,6 +18,8 @@ public class AppProperties {
     private String corsOrigins = "";
     private String displayZone = "Asia/Kolkata";
     private String mailFrom = "no-reply@voting.local";
+    private String brevoApiKey = "";
+    private String resendApiKey = "";
     private Otp otp = new Otp();
     private Jwt jwt = new Jwt();
     private RateLimit rateLimit = new RateLimit();
