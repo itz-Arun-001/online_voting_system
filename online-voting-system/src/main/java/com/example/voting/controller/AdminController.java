@@ -298,20 +298,21 @@ public class AdminController {
         String email = EmailUtil.normalize(r.email());
         if (!EmailUtil.isValid(email)) throw ApiException.badRequest("Enter a valid email address.");
 
-        User u = users.findByEmail(email).orElseGet(() -> {
-            User n = new User();
-            n.setEmail(email);
-            n.setName(r.name() != null && !r.name().isBlank() ? r.name().trim() : null);
-            n.setRole(Role.CO_ADMIN);
-            return users.save(n);
-        });
-
-        if (u.getRole() == Role.ADMIN) throw ApiException.conflict("This user is already a full admin.");
-        u.setRole(Role.CO_ADMIN);
-        if (r.name() != null && !r.name().isBlank()) {
-            u.setName(r.name().trim());
+        User u = users.findByEmail(email).orElse(null);
+        if (u == null) {
+            u = new User();
+            u.setEmail(email);
+            u.setName(r.name() != null && !r.name().isBlank() ? r.name().trim() : null);
+            u.setRole(Role.CO_ADMIN);
+            u = users.save(u);
+        } else {
+            if (u.getRole() == Role.ADMIN) throw ApiException.conflict("This user is already a full admin.");
+            u.setRole(Role.CO_ADMIN);
+            if (r.name() != null && !r.name().isBlank()) {
+                u.setName(r.name().trim());
+            }
+            u = users.save(u);
         }
-        users.save(u);
         audit.log(me, "PROMOTE_CO_ADMIN", "email=" + u.getEmail());
         List<Long> assigned = electionCoAdmins.findByUserId(u.getId()).stream().map(ElectionCoAdmin::getElectionId).toList();
         return new AdminUserView(u.getId(), u.getEmail(), u.getName(), u.getRole().name(), assigned);

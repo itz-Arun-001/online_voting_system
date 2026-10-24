@@ -41,7 +41,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Object> handleIntegrity(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+        String cause = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+        log.warn("Data integrity violation: {}", cause);
+        if (cause != null && (cause.toLowerCase().contains("users_role_check") || cause.toLowerCase().contains("check constraint"))) {
+            return build(HttpStatus.CONFLICT, "Database check constraint violation: " + cause);
+        }
         return build(HttpStatus.CONFLICT, "That conflicts with existing data.");
     }
 
