@@ -24,6 +24,9 @@ public class Candidate {
     @Column(name = "photo_url", length = 500)
     private String photoUrl;
 
+    @Column(length = 2000)
+    private String manifesto;
+
     public Candidate(Long electionId, String name, String description, String photoUrl) {
         this.electionId = electionId;
         this.name = name;

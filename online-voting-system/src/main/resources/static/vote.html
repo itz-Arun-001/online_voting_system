@@ -10,6 +10,7 @@
 <main class="sheet">
   <header class="top"><a class="brand" href="/">College Election</a><nav id="nav"></nav></header>
   <h1>Your elections</h1>
+  <div id="announcements"></div>
   <div id="msg"></div>
   <div id="root"><p class="lead">Loading.</p></div>
 </main>
@@ -19,9 +20,22 @@ requireLogin();
 const $ = (s) => document.querySelector(s);
 const root = $('#root');
 
+// Load global announcements
+async function loadAnnouncements() {
+  try {
+    const list = await api('/public/announcements');
+    if (!list.length) return;
+    const wrap = $('#announcements');
+    wrap.innerHTML = list.map(a => `<div class="announcement-banner">
+      <p>📢 ${esc(a.message)}</p>
+      <p class="ann-time">${esc(fmt(a.publishedAt))}</p>
+    </div>`).join('');
+  } catch(_) {}
+}
+
 function resultsLine(e) {
   return e.resultsVisible
-    ? `<p><a href="results.html?id=${e.id}">View results</a></p>`
+    ? `<p><a href="results.html?id=${e.id}">View results →</a></p>`
     : '<p class="meta">Results are not available yet.</p>';
 }
 
@@ -29,32 +43,87 @@ async function renderElection(e) {
   const sec = document.createElement('section');
   sec.className = 'election';
   let body = '';
-  if (e.status === 'UPCOMING') body = `<p>Voting opens ${esc(fmt(e.startTime))}.</p>`;
-  else if (e.hasVoted) {
+
+  if (e.status === 'UPCOMING') {
+    body = `<p>Voting opens ${esc(fmt(e.startTime))}.</p>`;
+  } else if (e.hasVoted) {
     let when = '';
-    try { const s = await api(`/elections/${e.id}/my-status`); when = s.votedAt ? ` (${fmt(s.votedAt)})` : ''; } catch (_) {}
-    body = `<p class="msg ok">Your vote has been recorded${esc(when)}. You can't change it, and nobody can see who you chose.</p>`;
-  } else if (e.status === 'CLOSED') body = `<p>Voting closed ${esc(fmt(e.endTime))}. You did not vote in this election.</p>`;
-  else body = '<div class="ballot-slot"></div>';
+    let receipt = '';
+    try {
+      const s = await api(`/elections/${e.id}/my-status`);
+      when = s.votedAt ? ` on ${fmt(s.votedAt)}` : '';
+      if (s.receiptToken) {
+        receipt = `<div class="receipt">
+          🔒 <strong>Anonymity Receipt</strong> — your vote is recorded anonymously. Nobody can link this token back to your identity.
+          <code>${esc(s.receiptToken)}</code>
+        </div>`;
+      }
+    } catch (_) {}
+    body = `<p class="msg ok">✅ Your vote has been recorded${esc(when)}. You cannot change it, and nobody can see who you chose.</p>${receipt}`;
+  } else if (e.status === 'CLOSED') {
+    body = `<p>Voting closed ${esc(fmt(e.endTime))}. You did not vote in this election.</p>`;
+  } else {
+    // ACTIVE — show countdown + ballot
+    body = `<div class="countdown-wrap"><span class="meta">Time remaining: </span><span class="cdtimer"></span></div><div class="ballot-slot"></div>`;
+  }
+
+  // Load election-specific announcements
+  let annHtml = '';
+  try {
+    const anns = await api(`/public/elections/${e.id}/announcements`);
+    if (anns.length) {
+      annHtml = anns.map(a => `<div class="announcement-banner"><p>📢 ${esc(a.message)}</p><p class="ann-time">${esc(fmt(a.publishedAt))}</p></div>`).join('');
+    }
+  } catch(_) {}
+
+  let applyHtml = '';
+  if (e.status !== 'CLOSED') {
+    applyHtml = `<details style="margin: 12px 0;">
+      <summary style="font-size:14px;cursor:pointer;color:var(--mark);">Apply to contest as a candidate</summary>
+      <form class="apply-form" data-election="${e.id}" style="margin-top:10px">
+        <label>Candidate Full Name</label>
+        <input type="text" name="name" required maxlength="150" placeholder="e.g. Alex Johnson">
+        <label>Manifesto / Agenda (optional)</label>
+        <textarea name="manifesto" maxlength="2000" placeholder="Why should people vote for you? Your plans and promises..."></textarea>
+        <label>Photo (optional)</label>
+        <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif">
+        <p class="hint">JPG, PNG, WebP or GIF, up to 2 MB.</p>
+        <button class="btn small" style="margin-top:6px">Submit candidacy application</button>
+        <div class="apply-msg" style="margin-top:8px"></div>
+      </form>
+    </details>`;
+  }
 
   sec.innerHTML = `<h2>${esc(e.title)} ${statusTag(e.status)}</h2>
     <p class="meta">Voting ${esc(fmt(e.startTime))} to ${esc(fmt(e.endTime))}</p>
-    ${e.description ? `<p>${esc(e.description)}</p>` : ''}${body}${resultsLine(e)}`;
+    ${e.description ? `<p>${esc(e.description)}</p>` : ''}${annHtml}${body}${applyHtml}${resultsLine(e)}`;
+
   root.append(sec);
-  if (e.status === 'ACTIVE' && !e.hasVoted) renderBallot(e, sec.querySelector('.ballot-slot'));
+
+  if (e.status === 'ACTIVE' && !e.hasVoted) {
+    const cdEl = sec.querySelector('.cdtimer');
+    if (cdEl) startCountdown(e.endTime, cdEl, () => load());
+    renderBallot(e, sec.querySelector('.ballot-slot'));
+  }
 }
 
 async function renderBallot(e, slot) {
   let cands;
-  try { cands = await api(`/elections/${e.id}/candidates`); }
-  catch (err) { slot.innerHTML = `<p class="msg err">${esc(err.message)}</p>`; return; }
+  try {
+    // Try full endpoint (with manifesto), fall back to basic
+    try { cands = await api(`/elections/${e.id}/candidates/full`); }
+    catch(_) { cands = await api(`/elections/${e.id}/candidates`); }
+  } catch (err) { slot.innerHTML = `<p class="msg err">${esc(err.message)}</p>`; return; }
   if (!cands.length) { slot.innerHTML = '<p class="empty">No candidates have been added yet. Check back soon.</p>'; return; }
 
   slot.innerHTML = `<form><fieldset style="border:0;padding:0;margin:0"><legend class="meta">Mark one candidate</legend>
     <div class="ballot">${cands.map((c) => `<label class="choice"><input type="radio" name="c${e.id}" value="${c.id}"><span class="box"></span>
       ${c.photoUrl ? `<img class="photo" src="${esc(c.photoUrl)}" alt="Photo of ${esc(c.name)}" loading="lazy">` : ''}
-      <span class="who"><strong>${esc(c.name)}</strong>${c.description ? `<span>${esc(c.description)}</span>` : ''}</span></label>`).join('')}</div></fieldset>
+      <span class="who"><strong>${esc(c.name)}</strong>${c.description ? `<span>${esc(c.description)}</span>` : ''}
+      ${c.manifesto ? `<span><button type="button" class="manifesto-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'Hide manifesto ▲':'Read manifesto ▼'">Read manifesto ▼</button><span class="manifesto-text">${esc(c.manifesto)}</span></span>` : ''}
+      </span></label>`).join('')}</div></fieldset>
     <button class="btn" disabled>Review your choice</button><div class="confirm-slot"></div></form>`;
+
   const form = slot.querySelector('form'), btn = form.querySelector('.btn'), conf = form.querySelector('.confirm-slot');
   form.addEventListener('change', () => { btn.disabled = false; conf.innerHTML = ''; btn.hidden = false; });
   form.addEventListener('submit', (ev) => {
@@ -71,6 +140,7 @@ async function renderBallot(e, slot) {
       click.target.disabled = true;
       try {
         await api(`/elections/${e.id}/vote`, { method: 'POST', body: { candidateId: Number(picked.value) } });
+        launchConfetti();
         load();
       } catch (err) {
         notify($('#msg'), err.message, 'err');
@@ -91,6 +161,37 @@ async function load() {
     for (const e of list) await renderElection(e);
   } catch (err) { root.innerHTML = ''; notify($('#msg'), err.message, 'err'); }
 }
+
+document.body.addEventListener('submit', async (ev) => {
+  const form = ev.target.closest('.apply-form');
+  if (!form) return;
+  ev.preventDefault();
+  const eid = form.dataset.election;
+  const name = form.querySelector('[name="name"]').value.trim();
+  const manifesto = form.querySelector('[name="manifesto"]').value.trim();
+  const photoInput = form.querySelector('[name="photo"]');
+  const msgEl = form.querySelector('.apply-msg');
+  const btn = form.querySelector('button');
+  btn.disabled = true;
+  try {
+    const fd = new FormData();
+    fd.append('name', name);
+    if (manifesto) fd.append('manifesto', manifesto);
+    if (photoInput && photoInput.files[0]) {
+      const file = photoInput.files[0];
+      if (file.size > 2 * 1024 * 1024) throw new Error('The photo must be 2 MB or smaller.');
+      fd.append('photo', file);
+    }
+    await api(`/elections/${eid}/apply`, { method: 'POST', body: fd });
+    msgEl.innerHTML = '<p class="msg ok">Application submitted! The election administrator will review it.</p>';
+    form.reset();
+  } catch(err) {
+    msgEl.innerHTML = `<p class="msg err">${esc(err.message)}</p>`;
+  }
+  btn.disabled = false;
+});
+
+loadAnnouncements();
 load();
 </script>
 </body>

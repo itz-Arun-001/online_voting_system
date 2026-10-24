@@ -5,16 +5,20 @@ import com.example.voting.dto.Dtos.*;
 import com.example.voting.entity.Candidate;
 import com.example.voting.entity.CandidatePhoto;
 import com.example.voting.entity.Election;
+import com.example.voting.entity.ElectionCoAdmin;
 import com.example.voting.enums.ElectionStatus;
 import com.example.voting.enums.ResultMode;
 import com.example.voting.exception.ApiException;
 import com.example.voting.repository.CandidatePhotoRepository;
 import com.example.voting.repository.CandidateRepository;
+import com.example.voting.repository.ElectionCoAdminRepository;
 import com.example.voting.repository.ElectionRepository;
 import com.example.voting.repository.EligibleVoterRepository;
 import com.example.voting.repository.VoteRepository;
 import com.example.voting.security.AuthUser;
 import com.example.voting.util.EmailUtil;
+import com.example.voting.repository.CandidateApplicationRepository;
+import com.example.voting.repository.AnnouncementRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -35,6 +39,9 @@ public class ElectionService {
     private final CandidatePhotoRepository photos;
     private final EligibleVoterRepository eligible;
     private final VoteRepository votes;
+    private final ElectionCoAdminRepository electionCoAdmins;
+    private final CandidateApplicationRepository applications;
+    private final AnnouncementRepository announcements;
     private final AppProperties props;
 
     // ---------- lookups and rules ----------
@@ -160,9 +167,30 @@ public class ElectionService {
         return elections.findAllByOrderByStartTimeDesc().stream().map(e -> toView(e, null)).toList();
     }
 
+    public List<ElectionView> listForAdmin(AuthUser user) {
+        if (user.isFullAdmin()) return listAll();
+        List<Long> assigned = electionCoAdmins.findByUserId(user.id()).stream()
+                .map(ElectionCoAdmin::getElectionId).toList();
+        return elections.findAllByOrderByStartTimeDesc().stream()
+                .filter(e -> assigned.contains(e.getId()))
+                .map(e -> toView(e, null))
+                .toList();
+    }
+
+    public void requireElectionAccess(Long electionId, AuthUser user) {
+        if (user.isFullAdmin()) return;
+        if (user.isCoAdmin() && electionCoAdmins.existsByElectionIdAndUserId(electionId, user.id())) return;
+        throw ApiException.forbidden("You do not have permission to manage this election.");
+    }
+
     public List<CandidateView> candidatesOf(Long electionId) {
         return candidates.findByElectionIdOrderByIdAsc(electionId).stream()
-                .map(c -> new CandidateView(c.getId(), c.getName(), c.getDescription(), c.getPhotoUrl())).toList();
+                .map(c -> new CandidateView(c.getId(), c.getName(), c.getDescription(), c.getManifesto(), c.getPhotoUrl())).toList();
+    }
+
+    public List<CandidateViewFull> candidatesWithManifesto(Long electionId) {
+        return candidates.findByElectionIdOrderByIdAsc(electionId).stream()
+                .map(c -> new CandidateViewFull(c.getId(), c.getName(), c.getDescription(), c.getManifesto(), c.getPhotoUrl())).toList();
     }
 
     // ---------- admin: elections ----------
@@ -188,11 +216,26 @@ public class ElectionService {
     @Transactional
     public void delete(Long id) {
         Election e = get(id);
-        if (votes.countByElectionId(id) > 0) throw ApiException.conflict("This election has votes and cannot be deleted.");
+        votes.deleteByElectionId(id);
         photos.deleteByElectionId(id);
         candidates.deleteByElectionId(id);
         eligible.deleteByElectionId(id);
+        electionCoAdmins.deleteByElectionId(id);
+        applications.deleteByElectionId(id);
+        announcements.deleteByElectionId(id);
         elections.delete(e);
+    }
+
+    @Transactional
+    public void deleteAllElections() {
+        votes.deleteAll();
+        photos.deleteAll();
+        candidates.deleteAll();
+        eligible.deleteAll();
+        electionCoAdmins.deleteAll();
+        applications.deleteAll();
+        announcements.deleteAll();
+        elections.deleteAll();
     }
 
     @Transactional
@@ -252,7 +295,9 @@ public class ElectionService {
     public Candidate addCandidate(Long electionId, CandidateRequest r) {
         Election e = get(electionId);
         requireEditableBallot(e);
-        return candidates.save(new Candidate(electionId, r.name().trim(), blankToNull(r.description()), blankToNull(r.photoUrl())));
+        Candidate c = new Candidate(electionId, r.name().trim(), blankToNull(r.description()), blankToNull(r.photoUrl()));
+        c.setManifesto(blankToNull(r.manifesto()));
+        return candidates.save(c);
     }
 
     @Transactional
@@ -261,6 +306,7 @@ public class ElectionService {
         requireEditableBallot(get(c.getElectionId()));
         c.setName(r.name().trim());
         c.setDescription(blankToNull(r.description()));
+        c.setManifesto(blankToNull(r.manifesto()));
         // An uploaded photo wins over a pasted link; remove the photo first to switch back to a link.
         if (!photos.existsById(candidateId)) c.setPhotoUrl(blankToNull(r.photoUrl()));
         return candidates.save(c);
@@ -310,7 +356,7 @@ public class ElectionService {
     }
 
     /** Checks the file's real signature instead of trusting the filename or the browser's content type. SVG is refused on purpose. */
-    private static String imageType(byte[] d) {
+    public static String imageType(byte[] d) {
         if (d.length >= 3 && (d[0] & 0xFF) == 0xFF && (d[1] & 0xFF) == 0xD8 && (d[2] & 0xFF) == 0xFF) return "image/jpeg";
         if (d.length >= 8 && (d[0] & 0xFF) == 0x89 && d[1] == 'P' && d[2] == 'N' && d[3] == 'G') return "image/png";
         if (d.length >= 6 && d[0] == 'G' && d[1] == 'I' && d[2] == 'F' && d[3] == '8') return "image/gif";

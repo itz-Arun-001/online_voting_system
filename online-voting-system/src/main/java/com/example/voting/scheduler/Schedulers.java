@@ -5,6 +5,7 @@ import com.example.voting.enums.ElectionStatus;
 import com.example.voting.enums.ResultMode;
 import com.example.voting.repository.ElectionRepository;
 import com.example.voting.repository.OtpTokenRepository;
+import com.example.voting.service.AnnouncementService;
 import com.example.voting.service.ElectionService;
 import com.example.voting.service.RateLimitService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class Schedulers {
     private final ElectionService electionService;
     private final OtpTokenRepository otps;
     private final RateLimitService rateLimit;
+    private final AnnouncementService announcementService;
 
     /** UPCOMING to ACTIVE at start time, ACTIVE to CLOSED at end time. */
     @Scheduled(cron = "0 * * * * *")
@@ -55,5 +57,10 @@ public class Schedulers {
     public void cleanup() {
         otps.deleteStale(Instant.now());
         rateLimit.purge();
+    }
+
+    @Scheduled(fixedDelay = 60_000)
+    public void publishAnnouncements() {
+        announcementService.publishDue();
     }
 }

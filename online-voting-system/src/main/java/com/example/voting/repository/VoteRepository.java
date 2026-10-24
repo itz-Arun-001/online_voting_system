@@ -15,6 +15,7 @@ public interface VoteRepository extends JpaRepository<Vote, Long> {
     boolean existsByElectionIdAndUserId(Long electionId, Long userId);
     Optional<Vote> findByElectionIdAndUserId(Long electionId, Long userId);
     long countByElectionId(Long electionId);
+    void deleteByElectionId(Long electionId);
 
     @Query("select v.candidateId, count(v) from Vote v where v.electionId = :eid group by v.candidateId")
     List<Object[]> countByCandidate(@Param("eid") Long electionId);

@@ -29,23 +29,26 @@ public class AuthService {
         String email = EmailUtil.normalize(rawEmail);
         if (!EmailUtil.isValid(email)) throw ApiException.badRequest("Enter a valid email address.");
 
-        boolean isAdmin = props.isAdminEmail(email);
+        boolean isFullAdmin = props.isAdminEmail(email);
+        User existingUser = users.findByEmail(email).orElse(null);
+        boolean isCoAdmin = existingUser != null && existingUser.getRole() == Role.CO_ADMIN;
+        boolean isAdminOrCoAdmin = isFullAdmin || isCoAdmin;
 
         // Verify the email's domain actually has active mail servers
         String domain = EmailUtil.getDomain(email);
-        if (!EmailUtil.hasValidMailServer(domain)) {
+        if (!isAdminOrCoAdmin && !EmailUtil.hasValidMailServer(domain) && !props.hasCollegeDomain(email)) {
             throw ApiException.badRequest("The domain '@" + domain + "' does not exist or has no active mail server.");
         }
 
-        // Accept admins, or emails matching the global college domain OR any per-election allowed domain
-        boolean domainAllowed = isAdmin || electionService.isEmailDomainAllowedAnywhere(email, props);
+        // Accept admins, co-admins (from any domain), or emails matching the college or per-election allowed domains
+        boolean domainAllowed = isAdminOrCoAdmin || electionService.isEmailDomainAllowedAnywhere(email, props);
         if (!domainAllowed) {
             String hint = electionService.allKnownDomainsHint(props);
             throw ApiException.badRequest("Use your college email address (ending in " + hint + ").");
         }
 
-        // Verify voter registration / eligibility for an active election
-        boolean hasAccess = isAdmin || electionService.hasAnyAccessWithDomains(email);
+        // Verify voter registration / eligibility for an active election (admins and co-admins always have access)
+        boolean hasAccess = isAdminOrCoAdmin || electionService.hasAnyAccessWithDomains(email);
         if (!hasAccess) {
             throw ApiException.badRequest("This email is not registered for any election. "
                     + "If your election requires a voter list, please ensure your email was added by the administrator.");

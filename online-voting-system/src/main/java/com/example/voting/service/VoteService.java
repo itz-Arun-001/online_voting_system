@@ -37,7 +37,9 @@ public class VoteService {
         Candidate c = candidates.findByIdAndElectionId(candidateId, electionId)
                 .orElseThrow(() -> ApiException.badRequest("Choose a candidate from this election."));
         try {
-            votes.saveAndFlush(new Vote(electionId, me.id(), c.getId()));
+            Vote vote = new Vote(electionId, me.id(), c.getId());
+            vote.setReceiptToken("RCPT-" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase());
+            votes.saveAndFlush(vote);
         } catch (DataIntegrityViolationException ex) {
             // Two requests raced: the unique (election_id, user_id) constraint rejected the second.
             throw ApiException.conflict("You have already voted in this election.");

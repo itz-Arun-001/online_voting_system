@@ -33,6 +33,7 @@ public final class Dtos {
     public record CandidateRequest(
             @NotBlank @Size(max = 150) String name,
             @Size(max = 1000) String description,
+            @Size(max = 2000) String manifesto,
             @Size(max = 500) String photoUrl) {}
 
     public record VoteRequest(@NotNull Long candidateId) {}
@@ -42,11 +43,30 @@ public final class Dtos {
                                boolean resultsPublished, boolean resultsVisible, boolean restrictToEligibleList,
                                Boolean hasVoted, String allowedDomains) {}
 
-    public record CandidateView(Long id, String name, String description, String photoUrl) {}
+    public record CandidateView(Long id, String name, String description, String manifesto, String photoUrl) {}
     public record CandidateResult(Long candidateId, String name, long votes) {}
     public record ResultsResponse(Long electionId, String title, ElectionStatus status, long totalVotes,
                                   List<CandidateResult> candidates) {}
     public record Turnout(long eligible, long voted, long pending, double turnoutPercent) {}
-    public record MyStatus(boolean hasVoted, Instant votedAt) {}
+    public record MyStatus(boolean hasVoted, Instant votedAt, String receiptToken) {}
     public record UploadSummary(int added, int duplicates, int invalid, List<String> invalidRows) {}
+
+    // Announcements
+    public record AnnouncementRequest(@NotBlank @Size(max = 2000) String message, Long electionId, Instant scheduledAt) {}
+    public record AnnouncementView(Long id, Long electionId, String message, Instant publishedAt, Instant scheduledAt) {}
+
+    // Candidate applications
+    public record ApplicationRequest(@NotBlank @Size(max = 150) String name, @Size(max = 2000) String manifesto) {}
+    public record ApplicationView(Long id, Long electionId, String name, String manifesto, String applicantEmail, String status, Instant appliedAt, String photoUrl) {}
+
+    // Co-admin
+    public record PromoteRequest(@NotBlank String email, String name) {}
+    public record AdminUserView(Long id, String email, String name, String role, List<Long> assignedElectionIds) {}
+    public record AssignElectionsRequest(List<Long> electionIds) {}
+
+    // Anonymity receipt
+    public record VoteReceipt(String receiptToken, String message) {}
+
+    // Updated CandidateView with manifesto
+    public record CandidateViewFull(Long id, String name, String description, String manifesto, String photoUrl) {}
 }

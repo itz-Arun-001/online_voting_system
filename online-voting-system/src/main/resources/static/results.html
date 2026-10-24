@@ -13,14 +13,33 @@
   <p class="meta" id="state"></p>
   <div id="msg"></div>
   <div id="bars"></div>
-  <p><a href="vote.html">Back to elections</a></p>
+  <p><a href="vote.html">← Back to elections</a></p>
 </main>
 <script src="js/app.js"></script>
 <script>
 requireLogin();
 const $ = (s) => document.querySelector(s);
 const id = new URLSearchParams(location.search).get('id');
-const draw = (res) => { $('#title').textContent = res.title; $('#bars').innerHTML = resultRows(res); };
+
+function leaderboard(res) {
+  const max = Math.max(1, ...res.candidates.map((c) => c.votes));
+  const sorted = [...res.candidates].sort((a,b) => b.votes - a.votes);
+  const rankLabel = (i) => {
+    const medals = ['🥇','🥈','🥉'];
+    const cls = ['first','second','third'][i] || '';
+    return `<span class="lb-rank ${cls}">${medals[i] || (i+1)}</span>`;
+  };
+  const rows = sorted.map((c, i) => `<div class="lb-row">
+    ${rankLabel(i)}
+    <div><strong>${esc(c.name)}</strong></div>
+    <div class="lb-bar"><div class="lb-fill" style="width:${max>0?(c.votes/max*100):0}%"></div></div>
+    <div class="lb-votes">${c.votes} ${c.votes===1?'vote':'votes'}</div>
+  </div>`).join('');
+  return `<div class="leaderboard">${rows || '<p class="empty">No candidates yet.</p>'}</div>
+    <p class="total" style="text-align:right">${res.totalVotes} ${res.totalVotes===1?'vote':'votes'} cast in total</p>`;
+}
+
+const draw = (res) => { $('#title').textContent = res.title; $('#bars').innerHTML = leaderboard(res); };
 
 async function startStream() {
   let delay = 2000;
@@ -28,7 +47,7 @@ async function startStream() {
     try {
       const res = await fetch(`/api/elections/${id}/results/stream`, { headers: { Authorization: 'Bearer ' + sessionStorage.getItem('token'), Accept: 'text/event-stream' } });
       if (!res.ok) throw new Error('stream');
-      $('#state').textContent = 'Live. These counts update as votes come in.';
+      $('#state').textContent = '🔴 Live — counts update as votes come in.';
       const reader = res.body.getReader(), dec = new TextDecoder();
       let buf = '';
       delay = 2000;
@@ -44,7 +63,7 @@ async function startStream() {
         }
       }
     } catch (_) {
-      $('#state').textContent = 'Reconnecting.';
+      $('#state').textContent = 'Reconnecting…';
       try { draw(await api(`/elections/${id}/results`)); } catch (_) {}
     }
     await new Promise((r) => setTimeout(r, delay));
@@ -60,7 +79,7 @@ async function startStream() {
     try {
       draw(await api(`/elections/${id}/results`));
       if (e.resultMode === 'LIVE' && e.status !== 'CLOSED') startStream();
-      else $('#state').textContent = e.status === 'CLOSED' ? 'Final results.' : 'Results so far.';
+      else $('#state').textContent = e.status === 'CLOSED' ? '✅ Final results.' : 'Results so far.';
     } catch (err) {
       let text = err.message;
       if (e.resultMode === 'SCHEDULED' && e.resultsPublishAt) text = 'Results will be available on ' + fmt(e.resultsPublishAt) + '.';

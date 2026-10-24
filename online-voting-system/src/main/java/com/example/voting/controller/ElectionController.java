@@ -42,6 +42,12 @@ public class ElectionController {
         return electionService.candidatesOf(id);
     }
 
+    @GetMapping("/{id}/candidates/full")
+    public List<CandidateView> candidatesFull(@PathVariable Long id, @AuthenticationPrincipal AuthUser me) {
+        visibleTo(id, me);
+        return electionService.candidatesOf(id);
+    }
+
     @PostMapping("/{id}/vote")
     public ResponseEntity<MessageResponse> vote(@PathVariable Long id, @Valid @RequestBody VoteRequest r,
                                                 @AuthenticationPrincipal AuthUser me) {
@@ -55,8 +61,8 @@ public class ElectionController {
     public MyStatus myStatus(@PathVariable Long id, @AuthenticationPrincipal AuthUser me) {
         visibleTo(id, me);
         return votes.findByElectionIdAndUserId(id, me.id())
-                .map(v -> new MyStatus(true, v.getVotedAt()))
-                .orElse(new MyStatus(false, null));
+                .map(v -> new MyStatus(true, v.getVotedAt(), v.getReceiptToken()))
+                .orElse(new MyStatus(false, null, null));
     }
 
     private Election visibleTo(Long id, AuthUser me) {

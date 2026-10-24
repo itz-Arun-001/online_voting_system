@@ -28,6 +28,9 @@ public class Vote {
     @Column(name = "voted_at", nullable = false)
     private Instant votedAt = Instant.now();
 
+    @Column(name = "receipt_token", length = 64)
+    private String receiptToken;
+
     public Vote(Long electionId, Long userId, Long candidateId) {
         this.electionId = electionId;
         this.userId = userId;

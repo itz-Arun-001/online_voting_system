@@ -34,7 +34,8 @@
 <script src="js/app.js"></script>
 <script>
 const $ = (s) => document.querySelector(s);
-if (sessionStorage.getItem('token')) location.replace(sessionStorage.getItem('role') === 'ADMIN' ? 'admin.html' : 'vote.html');
+const isAdm = (r) => r === 'ADMIN' || r === 'CO_ADMIN';
+if (sessionStorage.getItem('token')) location.replace(isAdm(sessionStorage.getItem('role')) ? 'admin.html' : 'vote.html');
 
 fetch('/api/public/config').then((r) => r.json()).then((c) => {
   if (c.hint) {
@@ -68,7 +69,7 @@ $('#otpForm').addEventListener('submit', async (e) => {
     sessionStorage.setItem('token', r.token);
     sessionStorage.setItem('role', r.role);
     sessionStorage.setItem('email', r.email);
-    location.href = r.role === 'ADMIN' ? 'admin.html' : 'vote.html';
+    location.href = isAdm(r.role) ? 'admin.html' : 'vote.html';
   } catch (err) { notify($('#msg'), err.message, 'err'); $('#otp').select(); }
   $('#verifyBtn').disabled = false;
 });

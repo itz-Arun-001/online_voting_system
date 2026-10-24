@@ -41,7 +41,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**", "/api/public/**",
                         "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
                         "/", "/*.html", "/css/**", "/js/**", "/favicon.ico").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "CO_ADMIN")
                 .anyRequest().authenticated())
             .exceptionHandling(e -> e
                 .authenticationEntryPoint((req, res, ex) -> json(res, 401, "Please sign in again."))

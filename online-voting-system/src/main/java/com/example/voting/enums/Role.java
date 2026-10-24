@@ -1,3 +1,3 @@
 package com.example.voting.enums;
 
-public enum Role { VOTER, ADMIN }
+public enum Role { VOTER, ADMIN, CO_ADMIN }

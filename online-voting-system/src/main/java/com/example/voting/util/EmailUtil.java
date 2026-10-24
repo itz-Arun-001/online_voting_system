@@ -34,24 +34,34 @@ public final class EmailUtil {
         return email.endsWith("@" + d);
     }
 
-    /** Checks DNS to verify that the domain has active MX (mail exchange) or A records. */
+    /** Checks DNS to verify that the domain (or its parent domain) has active MX (mail exchange) or A records. */
     public static boolean hasValidMailServer(String domain) {
         if (domain == null || domain.isBlank()) return false;
         String d = domain.toLowerCase(Locale.ROOT).trim();
         if (d.startsWith("@")) d = d.substring(1);
         if (DOMAIN_MX_CACHE.containsKey(d)) return DOMAIN_MX_CACHE.get(d);
 
+        boolean valid = checkDns(d);
+        if (!valid && d.contains(".")) {
+            // Check parent domain (e.g., student.annauniv.edu -> annauniv.edu)
+            String parent = d.substring(d.indexOf(".") + 1);
+            if (parent.contains(".")) {
+                valid = checkDns(parent);
+            }
+        }
+        DOMAIN_MX_CACHE.put(d, valid);
+        return valid;
+    }
+
+    private static boolean checkDns(String host) {
         try {
             java.util.Hashtable<String, String> env = new java.util.Hashtable<>();
             env.put("java.naming.factory.initial", "com.sun.jndi.dns.DnsContextFactory");
             javax.naming.directory.DirContext ictx = new javax.naming.directory.InitialDirContext(env);
-            javax.naming.directory.Attributes attrs = ictx.getAttributes(d, new String[] { "MX", "A" });
-            boolean valid = (attrs.get("MX") != null && attrs.get("MX").size() > 0)
+            javax.naming.directory.Attributes attrs = ictx.getAttributes(host, new String[] { "MX", "A" });
+            return (attrs.get("MX") != null && attrs.get("MX").size() > 0)
                     || (attrs.get("A") != null && attrs.get("A").size() > 0);
-            DOMAIN_MX_CACHE.put(d, valid);
-            return valid;
         } catch (Exception ex) {
-            DOMAIN_MX_CACHE.put(d, false);
             return false;
         }
     }
