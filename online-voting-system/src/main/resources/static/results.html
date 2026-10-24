@@ -39,7 +39,7 @@ function leaderboard(res) {
     <p class="total" style="text-align:right">${res.totalVotes} ${res.totalVotes===1?'vote':'votes'} cast in total</p>`;
 }
 
-const draw = (res) => { $('#title').textContent = res.title; $('#bars').innerHTML = leaderboard(res); };
+const draw = (res) => { $('#title').textContent = res.title; $('#bars').innerHTML = renderComparisonChart(res); };
 
 async function startStream() {
   let delay = 2000;

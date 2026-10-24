@@ -148,3 +148,115 @@ function launchConfetti() {
   }
   draw();
 }
+
+// ── Candidate Comparison Bar Chart ──────────────────────────
+function renderComparisonChart(r) {
+  if (!r.candidates || !r.candidates.length) {
+    return '<p class="empty">No candidates in this election yet.</p>';
+  }
+  const total = r.totalVotes || 0;
+  const sorted = [...r.candidates].sort((a, b) => b.votes - a.votes);
+  const maxVotes = Math.max(...sorted.map(c => c.votes), 1);
+  const leader = sorted[0];
+  const isTie = sorted.length > 1 && sorted[0].votes === sorted[1].votes && sorted[0].votes > 0;
+
+  const COLORS = [
+    'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+    'linear-gradient(135deg, #10b981, #047857)',
+    'linear-gradient(135deg, #f59e0b, #b45309)',
+    'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+    'linear-gradient(135deg, #ec4899, #be185d)',
+    'linear-gradient(135deg, #06b6d4, #0e7490)',
+    'linear-gradient(135deg, #f97316, #c2410c)',
+    'linear-gradient(135deg, #6366f1, #4338ca)'
+  ];
+
+  const chartId = 'chart_' + Math.random().toString(36).substring(2, 9);
+  const medals = ['🥇', '🥈', '🥉'];
+
+  const statsHtml = `
+    <div class="figures" style="margin-bottom:16px">
+      <div><dt>Total Votes</dt><dd>${total}</dd></div>
+      <div><dt>Leading</dt><dd style="font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${total > 0 ? (isTie ? '🤝 Tie (' + leader.votes + ')' : '👑 ' + esc(leader.name)) : '—'}</dd></div>
+      <div><dt>Candidates</dt><dd>${sorted.length}</dd></div>
+    </div>
+  `;
+
+  const horizBars = sorted.map((c, i) => {
+    const pct = total ? ((c.votes / total) * 100).toFixed(1) : 0;
+    const barWidth = total ? pct : 0;
+    const color = COLORS[i % COLORS.length];
+    const isLeading = total > 0 && c.votes === leader.votes;
+    return `
+      <div class="compare-bar-row">
+        <div class="compare-bar-info">
+          <div class="compare-candidate">
+            <span class="compare-rank rank-${i+1}">${medals[i] || (i+1)}</span>
+            <span class="compare-name">${esc(c.name)}${isLeading && !isTie ? ' <span style="font-size:12px;color:#d97706">👑 Leader</span>' : ''}</span>
+          </div>
+          <div class="compare-stats">
+            <strong>${c.votes}</strong> ${c.votes === 1 ? 'vote' : 'votes'}
+            <span class="compare-pct">(${pct}%)</span>
+          </div>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${isLeading ? 'leader' : ''}" style="width:${barWidth}%;background:${color}">
+            ${barWidth >= 14 ? pct + '%' : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const colBars = sorted.map((c, i) => {
+    const pct = total ? ((c.votes / total) * 100).toFixed(1) : 0;
+    const colHeight = c.votes > 0 ? Math.max(((c.votes / maxVotes) * 100), 8) : 2;
+    const color = COLORS[i % COLORS.length];
+    return `
+      <div class="col-item">
+        <div class="col-bar-wrap">
+          <div class="col-bar" style="height:${colHeight}%;background:${color}">
+            <div class="col-val">${c.votes}</div>
+          </div>
+        </div>
+        <div class="col-label" title="${esc(c.name)}">${esc(c.name)}</div>
+        <div class="col-pct">${pct}%</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="chart-card" id="${chartId}">
+      ${statsHtml}
+      <div class="chart-header">
+        <strong style="font-size:15px">Candidate Comparison</strong>
+        <div class="chart-view-toggle">
+          <button type="button" class="active" onclick="switchChartView('${chartId}', 'bars', this)">Horizontal Bars</button>
+          <button type="button" onclick="switchChartView('${chartId}', 'cols', this)">Column Chart</button>
+        </div>
+      </div>
+      <div class="chart-view-bars">${horizBars}</div>
+      <div class="chart-view-cols" style="display:none">
+        <div class="column-chart-wrap">
+          <div class="column-chart">${colBars}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function switchChartView(chartId, view, btn) {
+  const container = document.getElementById(chartId);
+  if (!container) return;
+  container.querySelectorAll('.chart-view-toggle button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const bars = container.querySelector('.chart-view-bars');
+  const cols = container.querySelector('.chart-view-cols');
+  if (view === 'bars') {
+    bars.style.display = 'block';
+    cols.style.display = 'none';
+  } else {
+    bars.style.display = 'none';
+    cols.style.display = 'block';
+  }
+}

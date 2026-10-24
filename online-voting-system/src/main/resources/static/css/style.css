@@ -201,3 +201,39 @@ summary { cursor: pointer; font-weight: 600; }
 [data-theme="dark"] .badge.pending { background: #3d2c00; color: #fbbf24; }
 [data-theme="dark"] .badge.approved { background: #022c22; color: #34d399; }
 [data-theme="dark"] .badge.rejected { background: #3b0a0a; color: #fc8181; }
+
+/* ── Candidate Comparison Charts ────────────────────────── */
+.chart-card { background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+[data-theme="dark"] .chart-card { background: var(--paper); border-color: var(--rule); box-shadow: none; }
+.chart-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+.chart-view-toggle { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--faint); }
+.chart-view-toggle button { background: transparent; border: none; padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--muted); transition: all 0.2s ease; }
+.chart-view-toggle button.active { background: var(--mark); color: #fff; }
+[data-theme="dark"] .chart-view-toggle button.active { color: #000; }
+
+.compare-bar-row { margin-bottom: 16px; }
+.compare-bar-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.compare-candidate { display: flex; align-items: center; gap: 8px; }
+.compare-rank { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; font-size: 12px; font-weight: 700; background: var(--faint); color: var(--muted); flex-shrink: 0; }
+.compare-rank.rank-1 { background: #fef3c7; color: #b45309; border: 1px solid #f59e0b; }
+.compare-rank.rank-2 { background: #f3f4f6; color: #4b5563; border: 1px solid #9ca3af; }
+.compare-rank.rank-3 { background: #ffedd5; color: #9a3412; border: 1px solid #ea580c; }
+[data-theme="dark"] .compare-rank.rank-1 { background: #451a03; color: #fbbf24; border-color: #d97706; }
+[data-theme="dark"] .compare-rank.rank-2 { background: #1f2937; color: #d1d5db; border-color: #6b7280; }
+[data-theme="dark"] .compare-rank.rank-3 { background: #431407; color: #fdba74; border-color: #c2410c; }
+
+.compare-name { font-weight: 600; font-size: 15px; }
+.compare-stats { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); }
+.compare-pct { color: var(--muted); font-weight: 400; margin-left: 4px; }
+.bar-track { background: var(--faint); height: 26px; border-radius: 6px; overflow: hidden; position: relative; display: flex; border: 1px solid var(--rule); }
+.bar-fill { height: 100%; border-radius: 5px; transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; color: #fff; font-size: 12px; font-weight: 700; min-width: 0; text-shadow: 0 1px 2px rgba(0,0,0,0.4); }
+.bar-fill.leader { box-shadow: 0 0 12px rgba(37,99,235,0.4); }
+
+.column-chart-wrap { margin-top: 10px; padding: 16px 0 0; overflow-x: auto; }
+.column-chart { display: flex; align-items: flex-end; justify-content: space-around; gap: 16px; height: 220px; min-width: 280px; padding: 24px 10px 0; border-bottom: 2px solid var(--rule); position: relative; }
+.col-item { flex: 1; max-width: 90px; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; position: relative; }
+.col-bar-wrap { width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.col-bar { width: 100%; max-width: 50px; border-radius: 6px 6px 0 0; transition: height 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); min-height: 4px; position: relative; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+.col-val { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.col-label { margin-top: 8px; text-align: center; font-size: 13px; font-weight: 600; color: var(--ink); width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-pct { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }

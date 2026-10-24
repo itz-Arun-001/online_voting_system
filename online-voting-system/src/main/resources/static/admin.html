@@ -245,16 +245,7 @@ async function rows() {
 async function tabResults() {
   const draw = async () => {
     const r = await api(`/admin/elections/${sel.id}/results`);
-    $('#adminBars').innerHTML = `<p class="meta"><strong>Total votes:</strong> ${r.totalVotes}</p>`
-      + (r.candidates.length ? r.candidates.map((c) => {
-        const pct = r.totalVotes ? ((c.votes / r.totalVotes) * 100).toFixed(1) : 0;
-        return `<div class="bar-row">
-          <div class="row" style="justify-content:space-between;margin-bottom:4px">
-            <strong>${esc(c.name)}</strong><span>${c.votes} (${pct}%)</span>
-          </div>
-          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
-        </div>`;
-      }).join('') : '<p class="empty">No candidates yet.</p>');
+    $('#adminBars').innerHTML = renderComparisonChart(r);
   };
   const showAt = sel.resultsPublishAt ? localInput(sel.resultsPublishAt) : '';
   $('#tabBody').innerHTML = `<p class="meta">You always see live counts here. Voters see them: <strong>${MODES[sel.resultMode].toLowerCase()}</strong>${sel.resultMode === 'SCHEDULED' && sel.resultsPublishAt ? ' (' + esc(fmt(sel.resultsPublishAt)) + ')' : ''}.
