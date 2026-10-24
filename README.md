@@ -43,7 +43,7 @@ Voters never create or remember a password. They enter their college email, rece
 - 📊 View results according to the election's visibility rule, including **live streaming** results
 
 ### 🛠️ For administrators
-- 🆕 Create, edit, close and delete elections with a voting window
+- 🆕 Create, edit (before voting starts), close and delete elections with a voting window
 - 👥 Manage candidates, including **photo upload** (JPG, PNG, WebP, GIF, max 2 MB)
 - 📥 Bulk-import the voter list from **CSV** (auto-normalised, de-duplicated, domain-validated)
 - 🌐 Choose eligibility: **voter list only** or **open to a college email domain**
@@ -52,6 +52,7 @@ Voters never create or remember a password. They enter their college email, rece
 - 📤 Export **voted / not-voted lists** and **results** as CSV
 - 👁️ Control result visibility: `LIVE`, `ON_CLOSE`, `SCHEDULED`, `MANUAL`
 - 🧾 Full **audit log** of every admin action
+- ✉️ Choose how OTP emails are sent: **Brevo API**, **Resend API**, or plain **SMTP**
 
 ### 🛡️ Built-in protections
 - BCrypt-hashed OTPs with expiry and attempt limits
@@ -59,6 +60,7 @@ Voters never create or remember a password. They enter their college email, rece
 - Stateless JWT authentication with role-based access (`VOTER`, `ADMIN`)
 - DNS **MX/A record check** to reject fake email domains
 - Ballot locks after the first vote
+- HTTPS email APIs (port 443) for hosts that block SMTP, such as Render
 - Non-root Docker container and graceful shutdown
 
 ---
@@ -75,7 +77,7 @@ flowchart TD
     D -- Yes --> E{Rate limit OK?<br/>3 per email, 60 per IP / 10 min}
     E -- No --> X3[/429 Too many requests/]
     E -- Yes --> F[Generate 6-digit OTP<br/>BCrypt hash stored, old codes invalidated]
-    F --> G[Email OTP<br/>or print to console in dev]
+    F --> G[Email OTP via Brevo / Resend / SMTP<br/>or print to console in dev]
     G --> H[Voter enters code]
     H --> I{Code valid?<br/>not expired, under 5 attempts}
     I -- No --> H
@@ -100,14 +102,14 @@ sequenceDiagram
     participant FE as Frontend (HTML/JS)
     participant API as Spring Boot API
     participant DB as Database
-    participant SMTP as SMTP Server
+    participant SMTP as Email provider<br/>(Brevo / Resend / SMTP)
 
     V->>FE: Enter email
     FE->>API: POST /api/auth/request-otp
     API->>API: Normalise email, validate, DNS MX check
     API->>API: Check eligibility + rate limits
     API->>DB: Invalidate old OTPs, save BCrypt hash
-    API->>SMTP: Send 6-digit code
+    API->>SMTP: Send 6-digit code (first configured provider)
     API-->>FE: 200 "Code sent"
     V->>FE: Enter code
     FE->>API: POST /api/auth/verify-otp
@@ -192,7 +194,7 @@ flowchart LR
     end
 
     DB[(MySQL / PostgreSQL<br/>H2 in dev)]
-    MAIL[✉️ SMTP<br/>Gmail / Brevo / any]
+    MAIL[✉️ Email<br/>Brevo API · Resend API · SMTP]
     DNS[(DNS<br/>MX lookup)]
 
     Client -- "REST + JSON<br/>Bearer JWT" --> SEC
@@ -225,7 +227,7 @@ flowchart LR
 | **Database** | MySQL 8.4 · PostgreSQL · H2 (development) |
 | **ORM** | Hibernate / Spring Data JPA (`ddl-auto=update`) |
 | **Real-time** | Server-Sent Events (`SseEmitter`) with 25 s heartbeat |
-| **Email** | Spring Mail over SMTP (Gmail, Brevo, or any provider) |
+| **Email** | Brevo HTTPS API, Resend HTTPS API, or Spring Mail over SMTP (Gmail or any provider) |
 | **API docs** | springdoc-openapi 2.6.0 (Swagger UI) |
 | **Frontend** | Vanilla HTML5, CSS3, JavaScript (no build step) |
 | **Build** | Maven |
@@ -326,23 +328,50 @@ erDiagram
 
 ```bash
 git clone https://github.com/itz-Arun-001/online_voting_system
-cd online-voting-system
-mvn spring-boot:run
+cd online_voting_system/online-voting-system      # the folder that contains pom.xml
+
+# Use a real domain for local testing (the app does a DNS mail-server check)
+COLLEGE_DOMAIN=gmail.com ADMIN_EMAILS=you@gmail.com mvn spring-boot:run
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:COLLEGE_DOMAIN = "gmail.com"; $env:ADMIN_EMAILS = "you@gmail.com"; mvn spring-boot:run
 ```
 
 Open **http://localhost:8080**
 
 - The default `dev` profile uses a file-based **H2** database stored in `./data/`.
-- With no SMTP configured, the **sign-in code is printed in the console**, so you can test without email.
-- Sign in as the default admin `admin@yourcollege.edu` to reach the admin console.
+- With no email provider configured, the **sign-in code is printed in the console** (look for the `OTP for ... is ######` warning line), so you can test without email.
+- Sign in with the address in `ADMIN_EMAILS` to reach the admin console.
+- The placeholder domain `yourcollege.edu` can fail the DNS mail-server check, so use a real domain such as `gmail.com` locally.
+
+> Prefer a `.env` file over typing variables each time. A step-by-step walkthrough, including a full test election, is in **[LOCAL_SETUP.md](online-voting-system/LOCAL_SETUP.md)**.
 
 ### 2. Send real OTP emails
 
-1. Copy `.env.example` to `.env` in the project folder (where you run `mvn`).
-2. Fill in `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`.
-   *Gmail:* enable 2-Step Verification, then create an App Password at <https://myaccount.google.com/apppasswords>.
-3. Set `COLLEGE_DOMAIN` and `ADMIN_EMAILS`. Codes are only sent to addresses on the allowed domain that are an admin or on a voter list. To test with Gmail, use `COLLEGE_DOMAIN=gmail.com`.
-4. Start the app. The console should print `Email is configured: ...`. If it says `NOT configured`, the `.env` file was not found.
+The app picks the **first provider that is configured**, in this order:
+
+| Priority | Provider | Set these variables | Notes |
+|---|---|---|---|
+| 1 | **Brevo HTTPS API** | `BREVO_API_KEY`, `MAIL_FROM` | Port 443, works on Render, Railway and other hosts that block SMTP. `MAIL_FROM` must be a sender verified in Brevo. |
+| 2 | **Resend HTTPS API** | `RESEND_API_KEY`, `MAIL_FROM` | Port 443. Without a usable `MAIL_FROM`, it falls back to `onboarding@resend.dev` (Resend's test sender). |
+| 3 | **SMTP** | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Gmail, Brevo SMTP relay, or any server. |
+| none | **Console** | nothing | `dev` profile only: the code is printed in the log. In `prod`, sign-in fails with "Email service is not configured". |
+
+**SMTP with Gmail (simplest for testing):**
+
+1. Create a `.env` file in the folder where you run `mvn` (it is git-ignored).
+2. Enable 2-Step Verification, then create an App Password at <https://myaccount.google.com/apppasswords>.
+3. Add `SMTP_HOST=smtp.gmail.com`, `SMTP_USER`, `SMTP_PASSWORD`, plus `COLLEGE_DOMAIN` and `ADMIN_EMAILS`. Codes are only sent to addresses on an allowed domain that are an admin or are registered for an election. To test with Gmail, use `COLLEGE_DOMAIN=gmail.com`.
+4. Start the app. The console prints one of:
+   - `Email is configured via Brevo HTTPS API ...`
+   - `Email is configured via Resend HTTPS API ...`
+   - `Email is configured: sign-in codes will be emailed through <host> ...`
+   - `Email is NOT configured ...` (the `.env` file was not found, or the variables are empty)
+
+> **Careful with `.env.example`:** it contains placeholder SMTP values. If you copy it unchanged, the app tries to send through Gmail with fake credentials and sign-in fails with "Failed to deliver email". Remove or replace the `SMTP_*` lines unless you have real credentials.
 
 ### 3. Run with Docker Compose (app + MySQL)
 
@@ -351,7 +380,9 @@ cp .env.example .env      # then edit the values
 docker compose up --build -d
 ```
 
-Serves on **http://localhost:8080** with a persistent MySQL volume. Put it behind HTTPS before sharing the link.
+Serves on **http://localhost:8080** with a persistent MySQL volume. Compose runs the `prod` profile, so **real email must be configured** (codes are not printed to the console) and `JWT_SECRET` is mandatory. Put it behind HTTPS before sharing the link.
+
+> `docker-compose.yml` currently passes only the `SMTP_*` variables to the app. To use Brevo or Resend with Compose, add `BREVO_API_KEY` / `RESEND_API_KEY` and `MAIL_FROM` to the `app.environment` block.
 
 ### 4. Run the tests
 
@@ -363,20 +394,22 @@ mvn test
 
 ## ⚙️ Configuration
 
-All settings are environment variables (or entries in `.env`).
+All settings are environment variables (or entries in a `.env` file in the folder you start the app from). Admin accounts are created at startup, so **restart after changing `ADMIN_EMAILS`**.
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `SPRING_PROFILES_ACTIVE` | `dev` (H2) or `prod` (real database) | `dev` |
-| `COLLEGE_DOMAIN` | Comma-separated domains allowed to sign in | `yourcollege.edu` |
+| `COLLEGE_DOMAIN` | Comma-separated global domains allowed to sign in (elections can add their own) | `yourcollege.edu` |
 | `ADMIN_EMAILS` | Comma-separated admin emails (seeded at startup, no admin signup) | `admin@yourcollege.edu` |
 | `JWT_SECRET` | 32+ random characters. **Required in production**; app refuses to start without it | dev only |
 | `JWT_EXPIRY_MINUTES` | Token lifetime | `60` |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | `jdbc:mysql://…` or `jdbc:postgresql://…` | none |
 | `DB_POOL_SIZE` | Hikari pool size | `5` |
 | `DDL_AUTO` | Hibernate schema mode | `update` |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Mail server for OTPs | none / `587` |
-| `MAIL_FROM` | From address (Gmail needs it equal to `SMTP_USER`) | `SMTP_USER` |
+| `BREVO_API_KEY` | Send OTPs through the Brevo HTTPS API (highest priority) | empty |
+| `RESEND_API_KEY` | Send OTPs through the Resend HTTPS API | empty |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | SMTP server for OTPs (used when no API key is set) | none / `587` |
+| `MAIL_FROM` | From address. Gmail needs it equal to `SMTP_USER`; Brevo and Resend need a verified sender | `SMTP_USER` |
 | `DISPLAY_ZONE` | Time zone for server-written messages | `Asia/Kolkata` |
 | `CORS_ORIGINS` | Only needed if the frontend is hosted elsewhere | empty |
 | `PORT` | HTTP port | `8080` |
@@ -396,9 +429,9 @@ All settings are environment variables (or entries in `.env`).
 
 ## 🧑‍⚖️ Running an election
 
-1. **Sign in as admin** and create an election: title, voting window, result mode, and whether it is restricted to a voter list or open to a domain.
+1. **Sign in as admin** and create an election: title, voting window, result mode, and who may vote: **Option 1, open to a college email domain** (set the allowed domains), or **Option 2, voter list (CSV)**.
 2. **Add candidates** (optionally with photos).
-3. **Upload the voter list** as CSV. Emails must be on an allowed domain.
+3. **Upload the voter list** as CSV (voter-list elections only). Each email must be on one of the election's allowed domains, otherwise the row is counted as invalid.
 4. **Share the site link.** Voters sign in and vote.
 5. **Monitor turnout**, download the voted / not-voted lists, and publish results as configured.
 6. **Export results** and the audit log for your records.
@@ -415,9 +448,11 @@ Rohan.Das@YourCollege.edu,Rohan Das,CS003
 The header row is optional. Emails are trimmed and lowercased, so `Rohan.Das@YourCollege.edu` and `rohan.das@yourcollege.edu` are the same person. Duplicates and invalid rows are reported in the upload summary.
 
 **Rules to know:**
+- Election details can only be edited **before voting starts**.
 - The candidate list and photos lock after the first vote.
 - An election with votes cannot be deleted.
 - Closing an election early moves its end time to now.
+- A non-admin can only request a sign-in code if their email is on a voter list, or a non-closed election allows their domain.
 - Every admin action is written to the audit log.
 
 ---
@@ -523,7 +558,9 @@ Errors return JSON: `{"status": 409, "message": "You have already voted in this 
 
 ## ☁️ Deployment
 
-Full instructions, including an election-day checklist and troubleshooting, are in **[DEPLOY.md](DEPLOY.md)**.
+Full instructions, including an election-day checklist and troubleshooting, are in **[DEPLOY.md](online-voting-system/DEPLOY.md)**.
+
+> **Render and similar hosts often block outbound SMTP.** If codes never arrive there, use `BREVO_API_KEY` or `RESEND_API_KEY` (HTTPS, port 443) instead of SMTP.
 
 | Option | Best for | Notes |
 |---|---|---|
@@ -541,10 +578,14 @@ DB_PASSWORD=...
 JWT_SECRET=$(openssl rand -base64 48)
 COLLEGE_DOMAIN=yourcollege.edu
 ADMIN_EMAILS=you@yourcollege.edu
+# Email: set ONE of the following
+BREVO_API_KEY=...            # or
+RESEND_API_KEY=...           # or
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=...
 SMTP_PASSWORD=...
+MAIL_FROM=...                # verified sender for Brevo / Resend
 ```
 
 ---
@@ -559,6 +600,7 @@ online-voting-system/
 ├── .env.example                  # Template for secrets and SMTP
 ├── voters.csv                    # Sample voter list
 ├── DEPLOY.md                     # Deployment guide
+├── LOCAL_SETUP.md                # Step-by-step local setup and GitHub guide
 └── src/
     ├── main/
     │   ├── java/com/example/voting/
@@ -574,7 +616,7 @@ online-voting-system/
     │   │   ├── scheduler/        # Status sync, result publishing, cleanup
     │   │   ├── security/         # JwtUtil, JwtAuthenticationFilter, AuthUser
     │   │   ├── service/          # Auth, Otp, Vote, Election, Result, Sse,
-    │   │   │                     # Email, VoterList, RateLimit, Audit
+    │   │   │                     # Email (Brevo/Resend/SMTP), VoterList, RateLimit, Audit
     │   │   └── util/             # CsvUtil, EmailUtil
     │   └── resources/
     │       ├── application.properties
@@ -620,6 +662,7 @@ online-voting-system/
 - **Votes are linked to users** (simple and auditable). For fully anonymous ballots, split `votes` into a "has voted" table and a separate ballot table.
 - **SSE subscribers are per instance.** With several instances, live updates reach only viewers connected to the instance that handled the vote.
 - **Client IP comes from `X-Forwarded-For`.** Run behind a trusted proxy that sets this header.
+- **Brevo and Resend sender addresses must be verified.** Unverified senders are rejected by the provider, and the voter sees a "Failed to deliver email" error.
 - **Free hosts may sleep** when idle. Open the site a few minutes before voting starts.
 - **Never run a real election over plain HTTP.** Render and Cloud Run provide HTTPS automatically.
 

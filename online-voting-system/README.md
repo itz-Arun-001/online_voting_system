@@ -4,7 +4,7 @@
 
 ### Secure, passwordless, one-person-one-vote elections for colleges
 
-_Sign in with an email code. Vote once. Watch results on your terms._
+*Sign in with an email code. Vote once. Watch results on your terms.*
 
 ![Java](https://img.shields.io/badge/Java-17-orange?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.5-6DB33F?logo=springboot&logoColor=white)
@@ -35,17 +35,15 @@ Voters never create or remember a password. They enter their college email, rece
 ## ✨ Features
 
 ### 👩‍🎓 For voters
-
 - 🔐 **Passwordless sign-in** with an emailed one-time code (OTP)
 - 🗂️ See only the elections you are eligible for
 - 🧑‍💼 Browse candidates with photos and descriptions
 - ✅ Cast **one vote per election**, guaranteed by a database constraint
-- 🔎 Check whether you have voted (and when), never _who_ you voted for
+- 🔎 Check whether you have voted (and when), never *who* you voted for
 - 📊 View results according to the election's visibility rule, including **live streaming** results
 
 ### 🛠️ For administrators
-
-- 🆕 Create, edit, close and delete elections with a voting window
+- 🆕 Create, edit (before voting starts), close and delete elections with a voting window
 - 👥 Manage candidates, including **photo upload** (JPG, PNG, WebP, GIF, max 2 MB)
 - 📥 Bulk-import the voter list from **CSV** (auto-normalised, de-duplicated, domain-validated)
 - 🌐 Choose eligibility: **voter list only** or **open to a college email domain**
@@ -54,14 +52,15 @@ Voters never create or remember a password. They enter their college email, rece
 - 📤 Export **voted / not-voted lists** and **results** as CSV
 - 👁️ Control result visibility: `LIVE`, `ON_CLOSE`, `SCHEDULED`, `MANUAL`
 - 🧾 Full **audit log** of every admin action
+- ✉️ Choose how OTP emails are sent: **Brevo API**, **Resend API**, or plain **SMTP**
 
 ### 🛡️ Built-in protections
-
 - BCrypt-hashed OTPs with expiry and attempt limits
 - Sliding-window **rate limiting** per email and per IP
 - Stateless JWT authentication with role-based access (`VOTER`, `ADMIN`)
 - DNS **MX/A record check** to reject fake email domains
 - Ballot locks after the first vote
+- HTTPS email APIs (port 443) for hosts that block SMTP, such as Render
 - Non-root Docker container and graceful shutdown
 
 ---
@@ -78,7 +77,7 @@ flowchart TD
     D -- Yes --> E{Rate limit OK?<br/>3 per email, 60 per IP / 10 min}
     E -- No --> X3[/429 Too many requests/]
     E -- Yes --> F[Generate 6-digit OTP<br/>BCrypt hash stored, old codes invalidated]
-    F --> G[Email OTP<br/>or print to console in dev]
+    F --> G[Email OTP via Brevo / Resend / SMTP<br/>or print to console in dev]
     G --> H[Voter enters code]
     H --> I{Code valid?<br/>not expired, under 5 attempts}
     I -- No --> H
@@ -103,14 +102,14 @@ sequenceDiagram
     participant FE as Frontend (HTML/JS)
     participant API as Spring Boot API
     participant DB as Database
-    participant SMTP as SMTP Server
+    participant SMTP as Email provider<br/>(Brevo / Resend / SMTP)
 
     V->>FE: Enter email
     FE->>API: POST /api/auth/request-otp
     API->>API: Normalise email, validate, DNS MX check
     API->>API: Check eligibility + rate limits
     API->>DB: Invalidate old OTPs, save BCrypt hash
-    API->>SMTP: Send 6-digit code
+    API->>SMTP: Send 6-digit code (first configured provider)
     API-->>FE: 200 "Code sent"
     V->>FE: Enter code
     FE->>API: POST /api/auth/verify-otp
@@ -158,12 +157,12 @@ stateDiagram-v2
     CLOSED --> [*]
 ```
 
-| Mode        | Voters see results when…                               |
-| ----------- | ------------------------------------------------------ |
-| `LIVE`      | Always, with real-time updates over Server-Sent Events |
-| `ON_CLOSE`  | The election has closed (default)                      |
-| `SCHEDULED` | A fixed date and time arrives                          |
-| `MANUAL`    | The admin presses **Publish**                          |
+| Mode | Voters see results when… |
+|---|---|
+| `LIVE` | Always, with real-time updates over Server-Sent Events |
+| `ON_CLOSE` | The election has closed (default) |
+| `SCHEDULED` | A fixed date and time arrives |
+| `MANUAL` | The admin presses **Publish** |
 
 > Admins always see live counts, regardless of mode. Status is **derived from the clock**, so it is correct even if the background scheduler has not run yet.
 
@@ -195,7 +194,7 @@ flowchart LR
     end
 
     DB[(MySQL / PostgreSQL<br/>H2 in dev)]
-    MAIL[✉️ SMTP<br/>Gmail / Brevo / any]
+    MAIL[✉️ Email<br/>Brevo API · Resend API · SMTP]
     DNS[(DNS<br/>MX lookup)]
 
     Client -- "REST + JSON<br/>Bearer JWT" --> SEC
@@ -207,35 +206,35 @@ flowchart LR
 
 ### Layered design
 
-| Layer                | Package                          | Responsibility                                                   |
-| -------------------- | -------------------------------- | ---------------------------------------------------------------- |
-| **Presentation**     | `controller`                     | HTTP routes, request validation, status codes                    |
-| **Business logic**   | `service`                        | Eligibility, OTP, voting rules, results, SSE, email, rate limits |
-| **Persistence**      | `repository`, `entity`           | JPA entities and Spring Data repositories                        |
-| **Security**         | `security`, `config`             | JWT filter, token utility, CORS, route authorization             |
-| **Cross-cutting**    | `exception`, `util`, `scheduler` | Error mapping, CSV/email helpers, background jobs                |
-| **Transfer objects** | `dto`                            | Request and response records                                     |
+| Layer | Package | Responsibility |
+|---|---|---|
+| **Presentation** | `controller` | HTTP routes, request validation, status codes |
+| **Business logic** | `service` | Eligibility, OTP, voting rules, results, SSE, email, rate limits |
+| **Persistence** | `repository`, `entity` | JPA entities and Spring Data repositories |
+| **Security** | `security`, `config` | JWT filter, token utility, CORS, route authorization |
+| **Cross-cutting** | `exception`, `util`, `scheduler` | Error mapping, CSV/email helpers, background jobs |
+| **Transfer objects** | `dto` | Request and response records |
 
 ---
 
 ## 🧰 Tech stack
 
-| Area                | Technology                                                      |
-| ------------------- | --------------------------------------------------------------- |
-| **Language**        | Java 17                                                         |
-| **Framework**       | Spring Boot 3.3.5 (Web, Data JPA, Security, Validation, Mail)   |
-| **Authentication**  | JWT via JJWT 0.12.6, stateless sessions, BCrypt for OTP hashing |
-| **Database**        | MySQL 8.4 · PostgreSQL · H2 (development)                       |
-| **ORM**             | Hibernate / Spring Data JPA (`ddl-auto=update`)                 |
-| **Real-time**       | Server-Sent Events (`SseEmitter`) with 25 s heartbeat           |
-| **Email**           | Spring Mail over SMTP (Gmail, Brevo, or any provider)           |
-| **API docs**        | springdoc-openapi 2.6.0 (Swagger UI)                            |
-| **Frontend**        | Vanilla HTML5, CSS3, JavaScript (no build step)                 |
-| **Build**           | Maven                                                           |
-| **Boilerplate**     | Lombok 1.18.42                                                  |
-| **Testing**         | JUnit 5, Spring Boot Test, Spring Security Test                 |
-| **Containers**      | Docker multi-stage build, Docker Compose (app + MySQL)          |
-| **Hosting options** | Render, Google Cloud Run, any VPS                               |
+| Area | Technology |
+|---|---|
+| **Language** | Java 17 |
+| **Framework** | Spring Boot 3.3.5 (Web, Data JPA, Security, Validation, Mail) |
+| **Authentication** | JWT via JJWT 0.12.6, stateless sessions, BCrypt for OTP hashing |
+| **Database** | MySQL 8.4 · PostgreSQL · H2 (development) |
+| **ORM** | Hibernate / Spring Data JPA (`ddl-auto=update`) |
+| **Real-time** | Server-Sent Events (`SseEmitter`) with 25 s heartbeat |
+| **Email** | Brevo HTTPS API, Resend HTTPS API, or Spring Mail over SMTP (Gmail or any provider) |
+| **API docs** | springdoc-openapi 2.6.0 (Swagger UI) |
+| **Frontend** | Vanilla HTML5, CSS3, JavaScript (no build step) |
+| **Build** | Maven |
+| **Boilerplate** | Lombok 1.18.42 |
+| **Testing** | JUnit 5, Spring Boot Test, Spring Security Test |
+| **Containers** | Docker multi-stage build, Docker Compose (app + MySQL) |
+| **Hosting options** | Render, Google Cloud Run, any VPS |
 
 ---
 
@@ -322,7 +321,6 @@ erDiagram
 ## 🚀 Quick start
 
 ### Prerequisites
-
 - **Java 17+**
 - **Maven 3.9+** (or use Docker)
 
@@ -330,23 +328,50 @@ erDiagram
 
 ```bash
 git clone https://github.com/itz-Arun-001/online_voting_system
-cd online-voting-system
-mvn spring-boot:run
+cd online_voting_system/online-voting-system      # the folder that contains pom.xml
+
+# Use a real domain for local testing (the app does a DNS mail-server check)
+COLLEGE_DOMAIN=gmail.com ADMIN_EMAILS=you@gmail.com mvn spring-boot:run
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:COLLEGE_DOMAIN = "gmail.com"; $env:ADMIN_EMAILS = "you@gmail.com"; mvn spring-boot:run
 ```
 
 Open **http://localhost:8080**
 
 - The default `dev` profile uses a file-based **H2** database stored in `./data/`.
-- With no SMTP configured, the **sign-in code is printed in the console**, so you can test without email.
-- Sign in as the default admin `admin@yourcollege.edu` to reach the admin console.
+- With no email provider configured, the **sign-in code is printed in the console** (look for the `OTP for ... is ######` warning line), so you can test without email.
+- Sign in with the address in `ADMIN_EMAILS` to reach the admin console.
+- The placeholder domain `yourcollege.edu` can fail the DNS mail-server check, so use a real domain such as `gmail.com` locally.
+
+> Prefer a `.env` file over typing variables each time. A step-by-step walkthrough, including a full test election, is in **[LOCAL_SETUP.md](LOCAL_SETUP.md)**.
 
 ### 2. Send real OTP emails
 
-1. Copy `.env.example` to `.env` in the project folder (where you run `mvn`).
-2. Fill in `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`.
-   _Gmail:_ enable 2-Step Verification, then create an App Password at <https://myaccount.google.com/apppasswords>.
-3. Set `COLLEGE_DOMAIN` and `ADMIN_EMAILS`. Codes are only sent to addresses on the allowed domain that are an admin or on a voter list. To test with Gmail, use `COLLEGE_DOMAIN=gmail.com`.
-4. Start the app. The console should print `Email is configured: ...`. If it says `NOT configured`, the `.env` file was not found.
+The app picks the **first provider that is configured**, in this order:
+
+| Priority | Provider | Set these variables | Notes |
+|---|---|---|---|
+| 1 | **Brevo HTTPS API** | `BREVO_API_KEY`, `MAIL_FROM` | Port 443, works on Render, Railway and other hosts that block SMTP. `MAIL_FROM` must be a sender verified in Brevo. |
+| 2 | **Resend HTTPS API** | `RESEND_API_KEY`, `MAIL_FROM` | Port 443. Without a usable `MAIL_FROM`, it falls back to `onboarding@resend.dev` (Resend's test sender). |
+| 3 | **SMTP** | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Gmail, Brevo SMTP relay, or any server. |
+| none | **Console** | nothing | `dev` profile only: the code is printed in the log. In `prod`, sign-in fails with "Email service is not configured". |
+
+**SMTP with Gmail (simplest for testing):**
+
+1. Create a `.env` file in the folder where you run `mvn` (it is git-ignored).
+2. Enable 2-Step Verification, then create an App Password at <https://myaccount.google.com/apppasswords>.
+3. Add `SMTP_HOST=smtp.gmail.com`, `SMTP_USER`, `SMTP_PASSWORD`, plus `COLLEGE_DOMAIN` and `ADMIN_EMAILS`. Codes are only sent to addresses on an allowed domain that are an admin or are registered for an election. To test with Gmail, use `COLLEGE_DOMAIN=gmail.com`.
+4. Start the app. The console prints one of:
+   - `Email is configured via Brevo HTTPS API ...`
+   - `Email is configured via Resend HTTPS API ...`
+   - `Email is configured: sign-in codes will be emailed through <host> ...`
+   - `Email is NOT configured ...` (the `.env` file was not found, or the variables are empty)
+
+> **Careful with `.env.example`:** it contains placeholder SMTP values. If you copy it unchanged, the app tries to send through Gmail with fake credentials and sign-in fails with "Failed to deliver email". Remove or replace the `SMTP_*` lines unless you have real credentials.
 
 ### 3. Run with Docker Compose (app + MySQL)
 
@@ -355,7 +380,9 @@ cp .env.example .env      # then edit the values
 docker compose up --build -d
 ```
 
-Serves on **http://localhost:8080** with a persistent MySQL volume. Put it behind HTTPS before sharing the link.
+Serves on **http://localhost:8080** with a persistent MySQL volume. Compose runs the `prod` profile, so **real email must be configured** (codes are not printed to the console) and `JWT_SECRET` is mandatory. Put it behind HTTPS before sharing the link.
+
+> `docker-compose.yml` currently passes only the `SMTP_*` variables to the app. To use Brevo or Resend with Compose, add `BREVO_API_KEY` / `RESEND_API_KEY` and `MAIL_FROM` to the `app.environment` block.
 
 ### 4. Run the tests
 
@@ -367,42 +394,44 @@ mvn test
 
 ## ⚙️ Configuration
 
-All settings are environment variables (or entries in `.env`).
+All settings are environment variables (or entries in a `.env` file in the folder you start the app from). Admin accounts are created at startup, so **restart after changing `ADMIN_EMAILS`**.
 
-| Variable                                               | Purpose                                                                            | Default                 |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------- | ----------------------- |
-| `SPRING_PROFILES_ACTIVE`                               | `dev` (H2) or `prod` (real database)                                               | `dev`                   |
-| `COLLEGE_DOMAIN`                                       | Comma-separated domains allowed to sign in                                         | `yourcollege.edu`       |
-| `ADMIN_EMAILS`                                         | Comma-separated admin emails (seeded at startup, no admin signup)                  | `admin@yourcollege.edu` |
-| `JWT_SECRET`                                           | 32+ random characters. **Required in production**; app refuses to start without it | dev only                |
-| `JWT_EXPIRY_MINUTES`                                   | Token lifetime                                                                     | `60`                    |
-| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`                 | `jdbc:mysql://…` or `jdbc:postgresql://…`                                          | none                    |
-| `DB_POOL_SIZE`                                         | Hikari pool size                                                                   | `5`                     |
-| `DDL_AUTO`                                             | Hibernate schema mode                                                              | `update`                |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | Mail server for OTPs                                                               | none / `587`            |
-| `MAIL_FROM`                                            | From address (Gmail needs it equal to `SMTP_USER`)                                 | `SMTP_USER`             |
-| `DISPLAY_ZONE`                                         | Time zone for server-written messages                                              | `Asia/Kolkata`          |
-| `CORS_ORIGINS`                                         | Only needed if the frontend is hosted elsewhere                                    | empty                   |
-| `PORT`                                                 | HTTP port                                                                          | `8080`                  |
-| `DB_ROOT_PASSWORD`                                     | MySQL root password (Docker Compose)                                               | `change-me-too`         |
+| Variable | Purpose | Default |
+|---|---|---|
+| `SPRING_PROFILES_ACTIVE` | `dev` (H2) or `prod` (real database) | `dev` |
+| `COLLEGE_DOMAIN` | Comma-separated global domains allowed to sign in (elections can add their own) | `yourcollege.edu` |
+| `ADMIN_EMAILS` | Comma-separated admin emails (seeded at startup, no admin signup) | `admin@yourcollege.edu` |
+| `JWT_SECRET` | 32+ random characters. **Required in production**; app refuses to start without it | dev only |
+| `JWT_EXPIRY_MINUTES` | Token lifetime | `60` |
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | `jdbc:mysql://…` or `jdbc:postgresql://…` | none |
+| `DB_POOL_SIZE` | Hikari pool size | `5` |
+| `DDL_AUTO` | Hibernate schema mode | `update` |
+| `BREVO_API_KEY` | Send OTPs through the Brevo HTTPS API (highest priority) | empty |
+| `RESEND_API_KEY` | Send OTPs through the Resend HTTPS API | empty |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | SMTP server for OTPs (used when no API key is set) | none / `587` |
+| `MAIL_FROM` | From address. Gmail needs it equal to `SMTP_USER`; Brevo and Resend need a verified sender | `SMTP_USER` |
+| `DISPLAY_ZONE` | Time zone for server-written messages | `Asia/Kolkata` |
+| `CORS_ORIGINS` | Only needed if the frontend is hosted elsewhere | empty |
+| `PORT` | HTTP port | `8080` |
+| `DB_ROOT_PASSWORD` | MySQL root password (Docker Compose) | `change-me-too` |
 
 **Built-in tuning (in `application.properties`):**
 
-| Setting                              | Value                    |
-| ------------------------------------ | ------------------------ |
+| Setting | Value |
+|---|---|
 | OTP length / validity / max attempts | 6 digits / 5 minutes / 5 |
-| OTP requests per email               | 3 per 10 minutes         |
-| OTP requests per IP                  | 60 per 10 minutes        |
-| Verify attempts per IP               | 120 per 10 minutes       |
-| Max upload size                      | 2 MB                     |
+| OTP requests per email | 3 per 10 minutes |
+| OTP requests per IP | 60 per 10 minutes |
+| Verify attempts per IP | 120 per 10 minutes |
+| Max upload size | 2 MB |
 
 ---
 
 ## 🧑‍⚖️ Running an election
 
-1. **Sign in as admin** and create an election: title, voting window, result mode, and whether it is restricted to a voter list or open to a domain.
+1. **Sign in as admin** and create an election: title, voting window, result mode, and who may vote: **Option 1, open to a college email domain** (set the allowed domains), or **Option 2, voter list (CSV)**.
 2. **Add candidates** (optionally with photos).
-3. **Upload the voter list** as CSV. Emails must be on an allowed domain.
+3. **Upload the voter list** as CSV (voter-list elections only). Each email must be on one of the election's allowed domains, otherwise the row is counted as invalid.
 4. **Share the site link.** Voters sign in and vote.
 5. **Monitor turnout**, download the voted / not-voted lists, and publish results as configured.
 6. **Export results** and the audit log for your records.
@@ -419,10 +448,11 @@ Rohan.Das@YourCollege.edu,Rohan Das,CS003
 The header row is optional. Emails are trimmed and lowercased, so `Rohan.Das@YourCollege.edu` and `rohan.das@yourcollege.edu` are the same person. Duplicates and invalid rows are reported in the upload summary.
 
 **Rules to know:**
-
+- Election details can only be edited **before voting starts**.
 - The candidate list and photos lock after the first vote.
 - An election with votes cannot be deleted.
 - Closing an election early moves its end time to now.
+- A non-admin can only request a sign-in code if their email is on a voter list, or a non-closed election allows their domain.
 - Every admin action is written to the audit log.
 
 ---
@@ -433,35 +463,35 @@ Interactive docs: **`/swagger-ui.html`** · OpenAPI JSON: **`/v3/api-docs`**
 
 ### Public
 
-| Method | Endpoint                            | Description                        |
-| ------ | ----------------------------------- | ---------------------------------- |
-| `POST` | `/api/auth/request-otp`             | Email a one-time code              |
-| `POST` | `/api/auth/verify-otp`              | Verify code, receive JWT           |
-| `GET`  | `/api/public/config`                | Allowed domains, OTP length, hints |
-| `GET`  | `/api/public/candidates/{id}/photo` | Candidate photo                    |
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/auth/request-otp` | Email a one-time code |
+| `POST` | `/api/auth/verify-otp` | Verify code, receive JWT |
+| `GET` | `/api/public/config` | Allowed domains, OTP length, hints |
+| `GET` | `/api/public/candidates/{id}/photo` | Candidate photo |
 
 ### Voter (requires `Authorization: Bearer <token>`)
 
-| Method | Endpoint                             | Description                              |
-| ------ | ------------------------------------ | ---------------------------------------- |
-| `GET`  | `/api/elections`                     | Elections you are eligible for           |
-| `GET`  | `/api/elections/{id}`                | Election details                         |
-| `GET`  | `/api/elections/{id}/candidates`     | Candidates                               |
-| `POST` | `/api/elections/{id}/vote`           | Cast your vote                           |
-| `GET`  | `/api/elections/{id}/my-status`      | Have I voted, and when                   |
-| `GET`  | `/api/elections/{id}/results`        | Results (if visible)                     |
-| `GET`  | `/api/elections/{id}/results/stream` | Live results over SSE (`LIVE` mode only) |
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/elections` | Elections you are eligible for |
+| `GET` | `/api/elections/{id}` | Election details |
+| `GET` | `/api/elections/{id}/candidates` | Candidates |
+| `POST` | `/api/elections/{id}/vote` | Cast your vote |
+| `GET` | `/api/elections/{id}/my-status` | Have I voted, and when |
+| `GET` | `/api/elections/{id}/results` | Results (if visible) |
+| `GET` | `/api/elections/{id}/results/stream` | Live results over SSE (`LIVE` mode only) |
 
 ### Admin (requires `ADMIN` role)
 
-| Area           | Endpoints                                                                                                                                                         |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Elections**  | `GET/POST /api/admin/elections` · `PUT/DELETE /api/admin/elections/{id}` · `PUT …/{id}/close`                                                                     |
-| **Candidates** | `GET/POST /api/admin/elections/{id}/candidates` · `PUT/DELETE /api/admin/candidates/{id}` · `POST/DELETE /api/admin/candidates/{id}/photo`                        |
-| **Voters**     | `POST …/{id}/voters/upload` · `GET …/voters/eligible` · `GET …/voters/voted` · `GET …/voters/not-voted` · `DELETE …/voters/{email}` · `GET …/voters/export?type=` |
-| **Turnout**    | `GET …/{id}/turnout`                                                                                                                                              |
-| **Results**    | `PUT …/{id}/result-settings` · `POST …/{id}/publish-results` · `GET …/{id}/results` · `GET …/{id}/results/export`                                                 |
-| **Audit**      | `GET /api/admin/audit-logs`                                                                                                                                       |
+| Area | Endpoints |
+|---|---|
+| **Elections** | `GET/POST /api/admin/elections` · `PUT/DELETE /api/admin/elections/{id}` · `PUT …/{id}/close` |
+| **Candidates** | `GET/POST /api/admin/elections/{id}/candidates` · `PUT/DELETE /api/admin/candidates/{id}` · `POST/DELETE /api/admin/candidates/{id}/photo` |
+| **Voters** | `POST …/{id}/voters/upload` · `GET …/voters/eligible` · `GET …/voters/voted` · `GET …/voters/not-voted` · `DELETE …/voters/{email}` · `GET …/voters/export?type=` |
+| **Turnout** | `GET …/{id}/turnout` |
+| **Results** | `PUT …/{id}/result-settings` · `POST …/{id}/publish-results` · `GET …/{id}/results` · `GET …/{id}/results/export` |
+| **Audit** | `GET /api/admin/audit-logs` |
 
 ### Try it with curl
 
@@ -484,34 +514,34 @@ curl localhost:8080/api/elections -H "Authorization: Bearer <token>"
 
 Errors return JSON: `{"status": 409, "message": "You have already voted in this election."}`
 
-| Code  | Meaning                                       |
-| ----- | --------------------------------------------- |
+| Code | Meaning |
+|---|---|
 | `400` | Bad input, voting not open, invalid candidate |
-| `401` | Missing/expired token or wrong OTP            |
-| `403` | Not eligible, not admin, or results hidden    |
-| `404` | Election or candidate not found               |
-| `409` | Already voted, already closed                 |
-| `429` | Rate limit exceeded                           |
+| `401` | Missing/expired token or wrong OTP |
+| `403` | Not eligible, not admin, or results hidden |
+| `404` | Election or candidate not found |
+| `409` | Already voted, already closed |
+| `429` | Rate limit exceeded |
 
 ---
 
 ## 🔒 Security design
 
-| Concern                     | How it is handled                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| **No passwords**            | Email OTP only; codes are BCrypt-hashed, never stored in plain text                                                                  |
-| **OTP brute force**         | 5 attempts per code, 5-minute expiry, single use, new code invalidates the old one                                                   |
-| **Request abuse**           | Sliding-window rate limits per email and per IP                                                                                      |
-| **Double voting**           | Database `UNIQUE (election_id, user_id)` plus an application check, safe under concurrent requests (covered by a parallel-vote test) |
-| **Authorization**           | Stateless JWT, `/api/admin/**` restricted to `ADMIN`; voters can only open elections they are eligible for                           |
-| **Ballot integrity**        | Candidates and photos lock after the first vote; candidate must belong to the election                                               |
-| **Admin accounts**          | Seeded only from `ADMIN_EMAILS`; there is no admin signup                                                                            |
-| **Voter privacy in the UI** | Admin voter lists and `my-status` expose who voted and when, never the choice                                                        |
-| **Fake domains**            | DNS MX/A lookup (cached) before any code is sent                                                                                     |
-| **Email consistency**       | All emails trimmed and lowercased everywhere                                                                                         |
-| **Accountability**          | Every admin action recorded in `audit_logs`                                                                                          |
-| **Secrets**                 | `JWT_SECRET` must be 32+ chars or the app will not start; `.env` is git-ignored                                                      |
-| **Container**               | Runs as a non-root user with graceful shutdown                                                                                       |
+| Concern | How it is handled |
+|---|---|
+| **No passwords** | Email OTP only; codes are BCrypt-hashed, never stored in plain text |
+| **OTP brute force** | 5 attempts per code, 5-minute expiry, single use, new code invalidates the old one |
+| **Request abuse** | Sliding-window rate limits per email and per IP |
+| **Double voting** | Database `UNIQUE (election_id, user_id)` plus an application check, safe under concurrent requests (covered by a parallel-vote test) |
+| **Authorization** | Stateless JWT, `/api/admin/**` restricted to `ADMIN`; voters can only open elections they are eligible for |
+| **Ballot integrity** | Candidates and photos lock after the first vote; candidate must belong to the election |
+| **Admin accounts** | Seeded only from `ADMIN_EMAILS`; there is no admin signup |
+| **Voter privacy in the UI** | Admin voter lists and `my-status` expose who voted and when, never the choice |
+| **Fake domains** | DNS MX/A lookup (cached) before any code is sent |
+| **Email consistency** | All emails trimmed and lowercased everywhere |
+| **Accountability** | Every admin action recorded in `audit_logs` |
+| **Secrets** | `JWT_SECRET` must be 32+ chars or the app will not start; `.env` is git-ignored |
+| **Container** | Runs as a non-root user with graceful shutdown |
 
 ---
 
@@ -530,11 +560,13 @@ Errors return JSON: `{"status": 409, "message": "You have already voted in this 
 
 Full instructions, including an election-day checklist and troubleshooting, are in **[DEPLOY.md](DEPLOY.md)**.
 
-| Option                      | Best for               | Notes                                                                 |
-| --------------------------- | ---------------------- | --------------------------------------------------------------------- |
-| **Render + Neon Postgres**  | Free, no billing setup | Free instances sleep when idle; open the site before voting starts    |
-| **Google Cloud Run**        | Always-on, scalable    | `--min-instances 1` is billed; use external Postgres to keep cost low |
-| **Docker Compose on a VPS** | Full control           | Bundled MySQL; add HTTPS with Caddy or a Cloudflare Tunnel            |
+> **Render and similar hosts often block outbound SMTP.** If codes never arrive there, use `BREVO_API_KEY` or `RESEND_API_KEY` (HTTPS, port 443) instead of SMTP.
+
+| Option | Best for | Notes |
+|---|---|---|
+| **Render + Neon Postgres** | Free, no billing setup | Free instances sleep when idle; open the site before voting starts |
+| **Google Cloud Run** | Always-on, scalable | `--min-instances 1` is billed; use external Postgres to keep cost low |
+| **Docker Compose on a VPS** | Full control | Bundled MySQL; add HTTPS with Caddy or a Cloudflare Tunnel |
 
 Minimum production variables:
 
@@ -546,10 +578,14 @@ DB_PASSWORD=...
 JWT_SECRET=$(openssl rand -base64 48)
 COLLEGE_DOMAIN=yourcollege.edu
 ADMIN_EMAILS=you@yourcollege.edu
+# Email: set ONE of the following
+BREVO_API_KEY=...            # or
+RESEND_API_KEY=...           # or
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=...
 SMTP_PASSWORD=...
+MAIL_FROM=...                # verified sender for Brevo / Resend
 ```
 
 ---
@@ -564,6 +600,7 @@ online-voting-system/
 ├── .env.example                  # Template for secrets and SMTP
 ├── voters.csv                    # Sample voter list
 ├── DEPLOY.md                     # Deployment guide
+├── LOCAL_SETUP.md                # Step-by-step local setup and GitHub guide
 └── src/
     ├── main/
     │   ├── java/com/example/voting/
@@ -579,7 +616,7 @@ online-voting-system/
     │   │   ├── scheduler/        # Status sync, result publishing, cleanup
     │   │   ├── security/         # JwtUtil, JwtAuthenticationFilter, AuthUser
     │   │   ├── service/          # Auth, Otp, Vote, Election, Result, Sse,
-    │   │   │                     # Email, VoterList, RateLimit, Audit
+    │   │   │                     # Email (Brevo/Resend/SMTP), VoterList, RateLimit, Audit
     │   │   └── util/             # CsvUtil, EmailUtil
     │   └── resources/
     │       ├── application.properties
@@ -599,23 +636,23 @@ online-voting-system/
 
 ### Frontend pages
 
-| Page           | Audience | Purpose                                                              |
-| -------------- | -------- | -------------------------------------------------------------------- |
-| `index.html`   | Everyone | Email → OTP sign-in                                                  |
-| `vote.html`    | Voters   | Elections list, candidates, cast vote                                |
-| `results.html` | Voters   | Results, live-updating in `LIVE` mode                                |
-| `admin.html`   | Admins   | Elections, candidates, voters, turnout, results, settings, audit log |
+| Page | Audience | Purpose |
+|---|---|---|
+| `index.html` | Everyone | Email → OTP sign-in |
+| `vote.html` | Voters | Elections list, candidates, cast vote |
+| `results.html` | Voters | Results, live-updating in `LIVE` mode |
+| `admin.html` | Admins | Elections, candidates, voters, turnout, results, settings, audit log |
 
 ---
 
 ## ⏱️ Background jobs
 
-| Job              | Schedule     | What it does                                         |
-| ---------------- | ------------ | ---------------------------------------------------- |
-| Status sync      | Every minute | Moves elections `UPCOMING → ACTIVE → CLOSED`         |
-| Result publisher | Every minute | Marks `SCHEDULED` / `ON_CLOSE` results as published  |
-| Cleanup          | Hourly       | Deletes stale OTPs and purges old rate-limit entries |
-| SSE heartbeat    | Every 25 s   | Keeps live-result connections alive through proxies  |
+| Job | Schedule | What it does |
+|---|---|---|
+| Status sync | Every minute | Moves elections `UPCOMING → ACTIVE → CLOSED` |
+| Result publisher | Every minute | Marks `SCHEDULED` / `ON_CLOSE` results as published |
+| Cleanup | Hourly | Deletes stale OTPs and purges old rate-limit entries |
+| SSE heartbeat | Every 25 s | Keeps live-result connections alive through proxies |
 
 ---
 
@@ -625,6 +662,7 @@ online-voting-system/
 - **Votes are linked to users** (simple and auditable). For fully anonymous ballots, split `votes` into a "has voted" table and a separate ballot table.
 - **SSE subscribers are per instance.** With several instances, live updates reach only viewers connected to the instance that handled the vote.
 - **Client IP comes from `X-Forwarded-For`.** Run behind a trusted proxy that sets this header.
+- **Brevo and Resend sender addresses must be verified.** Unverified senders are rejected by the provider, and the voter sees a "Failed to deliver email" error.
 - **Free hosts may sleep** when idle. Open the site a few minutes before voting starts.
 - **Never run a real election over plain HTTP.** Render and Cloud Run provide HTTPS automatically.
 
