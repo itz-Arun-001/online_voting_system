@@ -26,7 +26,7 @@
 
 **Online Voting System** is a full-stack web application for running verifiable, college-scale elections. A **Spring Boot 3** backend exposes a REST API and serves a lightweight **HTML/CSS/JavaScript** frontend from the same process, so the whole system ships as a single deployable unit.
 
-Voters never create or remember a password. They enter their college email, receive a 6-digit one-time code, and are signed in with a short-lived **JWT**. Admins create elections, manage candidates and voter lists, monitor turnout, and decide exactly **when and how results become visible**.
+Voters never create or remember a password. They enter their college email, receive a 6-digit one-time code, and are signed in with a short-lived **JWT**. Admins create elections, manage candidates and voter lists, post announcements, review candidacy applications, monitor turnout, and decide exactly **when and how results become visible**. A full admin can also delegate individual elections to **co-admins**.
 
 > **Design goals:** simple to deploy, hard to cheat, easy to audit.
 
@@ -37,27 +37,35 @@ Voters never create or remember a password. They enter their college email, rece
 ### 👩‍🎓 For voters
 - 🔐 **Passwordless sign-in** with an emailed one-time code (OTP)
 - 🗂️ See only the elections you are eligible for
-- 🧑‍💼 Browse candidates with photos and descriptions
+- 🧑‍💼 Browse candidates with photos, descriptions and **manifestos**
+- 📝 **Apply to contest** as a candidate (name, manifesto, optional photo) while an election is not closed
+- 📢 Read **announcements**, both site-wide and per election
 - ✅ Cast **one vote per election**, guaranteed by a database constraint
 - 🔎 Check whether you have voted (and when), never *who* you voted for
+- 🧾 Get a **vote receipt code** (`RCPT-…`) as confirmation that your vote was recorded
 - 📊 View results according to the election's visibility rule, including **live streaming** results
 
 ### 🛠️ For administrators
 - 🆕 Create, edit (before voting starts), close and delete elections with a voting window
-- 👥 Manage candidates, including **photo upload** (JPG, PNG, WebP, GIF, max 2 MB)
+- 👥 Manage candidates, including **manifesto** and **photo upload** (JPG, PNG, WebP, GIF, max 2 MB)
+- ✅ **Approve or reject candidacy applications**; approving creates the candidate (with manifesto and photo) automatically
+- 📢 Post **announcements** (global or per election), published instantly or **scheduled**
+- 🤝 Add **co-admins** from any email domain and assign them specific elections
 - 📥 Bulk-import the voter list from **CSV** (auto-normalised, de-duplicated, domain-validated)
 - 🌐 Choose eligibility: **voter list only** or **open to a college email domain**
 - 🏷️ Set **per-election allowed email domains** (multiple domains supported)
 - 📈 Live **turnout dashboard**: eligible, voted, pending, percentage
 - 📤 Export **voted / not-voted lists** and **results** as CSV
 - 👁️ Control result visibility: `LIVE`, `ON_CLOSE`, `SCHEDULED`, `MANUAL`
-- 🧾 Full **audit log** of every admin action
+- 🧾 Full **audit log** of every admin action (visible to full admins)
+- 🧨 **Reset all elections** (full admins only) to wipe test data
 - ✉️ Choose how OTP emails are sent: **Brevo API**, **Resend API**, or plain **SMTP**
 
 ### 🛡️ Built-in protections
 - BCrypt-hashed OTPs with expiry and attempt limits
 - Sliding-window **rate limiting** per email and per IP
-- Stateless JWT authentication with role-based access (`VOTER`, `ADMIN`)
+- Stateless JWT authentication with role-based access (`VOTER`, `CO_ADMIN`, `ADMIN`)
+- Per-election access checks for co-admins on every admin endpoint
 - DNS **MX/A record check** to reject fake email domains
 - Ballot locks after the first vote
 - HTTPS email APIs (port 443) for hosts that block SMTP, such as Render
@@ -70,9 +78,9 @@ Voters never create or remember a password. They enter their college email, rece
 ```mermaid
 flowchart TD
     A([Voter opens site]) --> B[Enter college email]
-    B --> C{Valid format and<br/>domain has mail server?}
+    B --> C{Valid format and domain<br/>has mail server?<br/>skipped for admins}
     C -- No --> X1[/Error shown/]
-    C -- Yes --> D{Admin, or domain allowed<br/>AND registered for an election?}
+    C -- Yes --> D{Admin or co-admin, or domain allowed<br/>AND registered for an election?}
     D -- No --> X2[/Not registered error/]
     D -- Yes --> E{Rate limit OK?<br/>3 per email, 60 per IP / 10 min}
     E -- No --> X3[/429 Too many requests/]
@@ -84,7 +92,7 @@ flowchart TD
     I -- Yes --> J[Issue JWT, valid 60 min]
     J --> K{Role}
     K -- VOTER --> L[Elections list]
-    K -- ADMIN --> M[Admin console]
+    K -- ADMIN or CO_ADMIN --> M[Admin console]
     L --> N[Select candidate]
     N --> O{Election ACTIVE<br/>and voter eligible<br/>and not yet voted?}
     O -- No --> X4[/403 or 409 error/]
@@ -106,7 +114,7 @@ sequenceDiagram
 
     V->>FE: Enter email
     FE->>API: POST /api/auth/request-otp
-    API->>API: Normalise email, validate, DNS MX check
+    API->>API: Normalise email, validate, DNS MX check (skipped for admins and co-admins)
     API->>API: Check eligibility + rate limits
     API->>DB: Invalidate old OTPs, save BCrypt hash
     API->>SMTP: Send 6-digit code (first configured provider)
@@ -134,12 +142,12 @@ sequenceDiagram
     API->>API: Status is ACTIVE? Voter eligible?
     API->>DB: Already voted?
     API->>DB: Candidate belongs to this election?
-    API->>DB: INSERT vote (unique election_id + user_id)
+    API->>DB: INSERT vote with receipt code (unique election_id + user_id)
     alt Two requests race
         DB-->>API: Constraint violation
         API-->>V: 409 Already voted
     else Success
-        API-->>V: 201 Vote recorded
+        API-->>V: 201 Vote recorded (receipt code available via my-status)
         API->>SSE: broadcast(election)
         SSE-->>W: event "results" (LIVE mode only)
     end
@@ -183,10 +191,10 @@ flowchart LR
     subgraph Server["☕ Spring Boot 3 Application"]
         direction TB
         SEC[Security Filter Chain<br/>JwtAuthenticationFilter]
-        CTRL[Controllers<br/>Auth · Election · Result<br/>Admin · Photo]
-        SVC[Services<br/>Auth · Otp · Vote · Election<br/>Result · Sse · Email · VoterList<br/>RateLimit · Audit]
+        CTRL[Controllers<br/>Auth · Election · Result · Admin<br/>Photo · Announcement · Application]
+        SVC[Services<br/>Auth · Otp · Vote · Election · Result<br/>Announcement · Application · Sse<br/>Email · VoterList · RateLimit · Audit]
         REPO[Spring Data JPA<br/>Repositories]
-        SCH[Schedulers<br/>status sync · result publish · cleanup]
+        SCH[Schedulers<br/>status sync · result publish<br/>announcements · cleanup]
         EXH[GlobalExceptionHandler]
         SEC --> CTRL --> SVC --> REPO
         SCH --> SVC
@@ -242,9 +250,15 @@ flowchart LR
 
 Tables are created automatically by Hibernate. Relationships are held as ID columns.
 
+> **Upgrading an existing database?** The `users.role` column gained a third value (`CO_ADMIN`). On startup, `DataInitializer` automatically drops the old role check constraint and widens the column to `VARCHAR(20)` (it tries PostgreSQL, H2 and MySQL syntax). Check the startup log for `Migrated users.role column...` if co-admin sign-in fails on an older database.
+
 ```mermaid
 erDiagram
     USERS ||--o{ VOTES : casts
+    USERS ||--o{ ELECTION_CO_ADMINS : "assigned as"
+    ELECTIONS ||--o{ ELECTION_CO_ADMINS : "managed by"
+    ELECTIONS ||--o{ CANDIDATE_APPLICATIONS : receives
+    ELECTIONS ||--o{ ANNOUNCEMENTS : "may have"
     ELECTIONS ||--o{ CANDIDATES : has
     ELECTIONS ||--o{ ELIGIBLE_VOTERS : lists
     ELECTIONS ||--o{ VOTES : receives
@@ -255,7 +269,7 @@ erDiagram
         long id PK
         string email UK
         string name
-        enum role "VOTER or ADMIN"
+        enum role "VOTER, ADMIN or CO_ADMIN"
         instant created_at
     }
     ELECTIONS {
@@ -277,6 +291,7 @@ erDiagram
         long election_id
         string name
         string description
+        string manifesto
         string photo_url
     }
     CANDIDATE_PHOTOS {
@@ -297,6 +312,7 @@ erDiagram
         long user_id "unique with election_id"
         long candidate_id
         instant voted_at
+        string receipt_token "RCPT-..."
     }
     OTP_TOKENS {
         long id PK
@@ -305,6 +321,34 @@ erDiagram
         instant expires_at
         int attempts
         boolean used
+        instant created_at
+    }
+    ELECTION_CO_ADMINS {
+        long id PK
+        long election_id "unique with user_id"
+        long user_id "unique with election_id"
+        instant assigned_at
+    }
+    CANDIDATE_APPLICATIONS {
+        long id PK
+        long election_id
+        string name
+        string manifesto
+        string applicant_email
+        string status "PENDING, APPROVED, REJECTED"
+        string photo_content_type
+        blob photo_data "max 2 MB"
+        instant applied_at
+        instant reviewed_at
+        long reviewed_by
+    }
+    ANNOUNCEMENTS {
+        long id PK
+        long election_id "null = global"
+        string message
+        instant scheduled_at
+        instant published_at
+        long created_by
         instant created_at
     }
     AUDIT_LOGS {
@@ -400,7 +444,7 @@ All settings are environment variables (or entries in a `.env` file in the folde
 |---|---|---|
 | `SPRING_PROFILES_ACTIVE` | `dev` (H2) or `prod` (real database) | `dev` |
 | `COLLEGE_DOMAIN` | Comma-separated global domains allowed to sign in (elections can add their own) | `yourcollege.edu` |
-| `ADMIN_EMAILS` | Comma-separated admin emails (seeded at startup, no admin signup) | `admin@yourcollege.edu` |
+| `ADMIN_EMAILS` | Comma-separated **full admin** emails (seeded at startup, no admin signup). Co-admins are added from the admin console instead | `admin@yourcollege.edu` |
 | `JWT_SECRET` | 32+ random characters. **Required in production**; app refuses to start without it | dev only |
 | `JWT_EXPIRY_MINUTES` | Token lifetime | `60` |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | `jdbc:mysql://…` or `jdbc:postgresql://…` | none |
@@ -430,10 +474,10 @@ All settings are environment variables (or entries in a `.env` file in the folde
 ## 🧑‍⚖️ Running an election
 
 1. **Sign in as admin** and create an election: title, voting window, result mode, and who may vote: **Option 1, open to a college email domain** (set the allowed domains), or **Option 2, voter list (CSV)**.
-2. **Add candidates** (optionally with photos).
+2. **Add candidates** (with optional manifesto and photo), or let voters **apply** and approve them under the *Applications* tab.
 3. **Upload the voter list** as CSV (voter-list elections only). Each email must be on one of the election's allowed domains, otherwise the row is counted as invalid.
 4. **Share the site link.** Voters sign in and vote.
-5. **Monitor turnout**, download the voted / not-voted lists, and publish results as configured.
+5. **Post announcements**, **monitor turnout**, download the voted / not-voted lists, and publish results as configured.
 6. **Export results** and the audit log for your records.
 
 **Voter CSV format** (`voters.csv`):
@@ -450,10 +494,30 @@ The header row is optional. Emails are trimmed and lowercased, so `Rohan.Das@You
 **Rules to know:**
 - Election details can only be edited **before voting starts**.
 - The candidate list and photos lock after the first vote.
-- An election with votes cannot be deleted.
+- **Deleting an election permanently removes** its candidates, votes, voter list, applications, announcements and co-admin assignments, even if votes were cast. Only full admins can delete. There is no undo.
+- Approving an application after the first vote marks it `APPROVED` but does **not** add a candidate, because the ballot is locked.
+- Each email can submit one application per election.
 - Closing an election early moves its end time to now.
 - A non-admin can only request a sign-in code if their email is on a voter list, or a non-closed election allows their domain.
 - Every admin action is written to the audit log.
+
+---
+
+## 🔑 Roles and permissions
+
+| Capability | `VOTER` | `CO_ADMIN` | `ADMIN` (full) |
+|---|:-:|:-:|:-:|
+| Sign in with email code | ✅ if eligible | ✅ any domain | ✅ any domain |
+| Vote, apply as candidate, read announcements | ✅ | ✅ | ✅ |
+| Open the admin console | ❌ | ✅ | ✅ |
+| Manage candidates, voters, results, applications, announcements of an election | ❌ | ✅ **assigned elections only** | ✅ all |
+| Create or delete elections | ❌ | ❌ | ✅ |
+| Post global announcements | ❌ | ❌ | ✅ |
+| Add, assign or remove co-admins | ❌ | ❌ | ✅ |
+| Reset all elections | ❌ | ❌ | ✅ |
+| View the audit log | ❌ | ❌ (empty list) | ✅ |
+
+Full admins come from `ADMIN_EMAILS`. To add a **co-admin**, a full admin enters the person's email in the admin console, then clicks **Assign elections** to grant access. Co-admin actions are still written to the audit log.
 
 ---
 
@@ -469,6 +533,9 @@ Interactive docs: **`/swagger-ui.html`** · OpenAPI JSON: **`/v3/api-docs`**
 | `POST` | `/api/auth/verify-otp` | Verify code, receive JWT |
 | `GET` | `/api/public/config` | Allowed domains, OTP length, hints |
 | `GET` | `/api/public/candidates/{id}/photo` | Candidate photo |
+| `GET` | `/api/public/announcements` | Published global announcements |
+| `GET` | `/api/public/elections/{id}/announcements` | Published announcements for an election |
+| `GET` | `/api/public/applications/{id}/photo` | Photo attached to a candidacy application |
 
 ### Voter (requires `Authorization: Bearer <token>`)
 
@@ -477,12 +544,14 @@ Interactive docs: **`/swagger-ui.html`** · OpenAPI JSON: **`/v3/api-docs`**
 | `GET` | `/api/elections` | Elections you are eligible for |
 | `GET` | `/api/elections/{id}` | Election details |
 | `GET` | `/api/elections/{id}/candidates` | Candidates |
+| `GET` | `/api/elections/{id}/candidates/full` | Candidates including manifestos |
+| `POST` | `/api/elections/{id}/apply` | Apply to be a candidate (JSON, or multipart with optional `photo`) |
 | `POST` | `/api/elections/{id}/vote` | Cast your vote |
-| `GET` | `/api/elections/{id}/my-status` | Have I voted, and when |
+| `GET` | `/api/elections/{id}/my-status` | Have I voted, when, and my receipt code |
 | `GET` | `/api/elections/{id}/results` | Results (if visible) |
 | `GET` | `/api/elections/{id}/results/stream` | Live results over SSE (`LIVE` mode only) |
 
-### Admin (requires `ADMIN` role)
+### Admin (requires `ADMIN` or `CO_ADMIN`; co-admins only reach their assigned elections)
 
 | Area | Endpoints |
 |---|---|
@@ -491,7 +560,11 @@ Interactive docs: **`/swagger-ui.html`** · OpenAPI JSON: **`/v3/api-docs`**
 | **Voters** | `POST …/{id}/voters/upload` · `GET …/voters/eligible` · `GET …/voters/voted` · `GET …/voters/not-voted` · `DELETE …/voters/{email}` · `GET …/voters/export?type=` |
 | **Turnout** | `GET …/{id}/turnout` |
 | **Results** | `PUT …/{id}/result-settings` · `POST …/{id}/publish-results` · `GET …/{id}/results` · `GET …/{id}/results/export` |
-| **Audit** | `GET /api/admin/audit-logs` |
+| **Audit** | `GET /api/admin/audit-logs` (full admins; co-admins get an empty page) |
+| **Announcements** | `GET/POST /api/admin/announcements` · `PUT …/announcements/{id}/publish` · `DELETE …/announcements/{id}` |
+| **Applications** | `GET …/elections/{id}/applications` · `PUT …/applications/{id}/approve` · `PUT …/applications/{id}/reject` |
+| **Co-admins** (full admin only) | `GET /api/admin/admins` · `POST …/admins/promote` · `PUT …/admins/{userId}/elections` · `DELETE …/admins/{userId}/demote` |
+| **Danger zone** (full admin only) | `POST /api/admin/elections/reset-all` |
 
 ### Try it with curl
 
@@ -518,7 +591,7 @@ Errors return JSON: `{"status": 409, "message": "You have already voted in this 
 |---|---|
 | `400` | Bad input, voting not open, invalid candidate |
 | `401` | Missing/expired token or wrong OTP |
-| `403` | Not eligible, not admin, or results hidden |
+| `403` | Not eligible, not an admin, no access to that election, or results hidden |
 | `404` | Election or candidate not found |
 | `409` | Already voted, already closed |
 | `429` | Rate limit exceeded |
@@ -533,11 +606,12 @@ Errors return JSON: `{"status": 409, "message": "You have already voted in this 
 | **OTP brute force** | 5 attempts per code, 5-minute expiry, single use, new code invalidates the old one |
 | **Request abuse** | Sliding-window rate limits per email and per IP |
 | **Double voting** | Database `UNIQUE (election_id, user_id)` plus an application check, safe under concurrent requests (covered by a parallel-vote test) |
-| **Authorization** | Stateless JWT, `/api/admin/**` restricted to `ADMIN`; voters can only open elections they are eligible for |
+| **Authorization** | Stateless JWT, `/api/admin/**` restricted to `ADMIN` and `CO_ADMIN`; co-admins are checked per election on every call; voters can only open elections they are eligible for |
 | **Ballot integrity** | Candidates and photos lock after the first vote; candidate must belong to the election |
-| **Admin accounts** | Seeded only from `ADMIN_EMAILS`; there is no admin signup |
+| **Admin accounts** | Full admins are seeded only from `ADMIN_EMAILS`; co-admins can only be created by a full admin; there is no admin signup |
 | **Voter privacy in the UI** | Admin voter lists and `my-status` expose who voted and when, never the choice |
-| **Fake domains** | DNS MX/A lookup (cached) before any code is sent |
+| **Vote receipt** | A random `RCPT-…` code confirms a vote was recorded. It is stored on the same row as the user and candidate, so it is a confirmation code, **not** an anonymity mechanism |
+| **Fake domains** | DNS MX/A lookup (cached, also tries the parent domain) before any code is sent; skipped for admins and co-admins |
 | **Email consistency** | All emails trimmed and lowercased everywhere |
 | **Accountability** | Every admin action recorded in `audit_logs` |
 | **Secrets** | `JWT_SECRET` must be 32+ chars or the app will not start; `.env` is git-ignored |
@@ -553,6 +627,8 @@ Errors return JSON: `{"status": 409, "message": "You have already voted in this 
 - **Voting:** double vote returns conflict · voting before start / after close fails · voter outside the list rejected · candidate from another election rejected · **parallel votes from one user save exactly one vote**
 - **Results:** `ON_CLOSE` hidden until close · `SCHEDULED` hidden until publish time · `MANUAL` needs publish, `LIVE` always visible · admin counts available while hidden from voters
 - **Utilities:** email normalisation, case-insensitive domain check, bad-format rejection
+
+> The automated tests cover authentication, voting and results. **Announcements, candidacy applications, co-admin permissions and vote receipts are not covered yet.**
 
 ---
 
@@ -606,17 +682,20 @@ online-voting-system/
     │   ├── java/com/example/voting/
     │   │   ├── VotingApplication.java
     │   │   ├── config/           # AppProperties, SecurityConfig, DataInitializer, OpenApiConfig
-    │   │   ├── controller/       # Auth, Election, Result, Admin, Photo
+    │   │   ├── controller/       # Auth, Election, Result, Admin, Photo,
+    │   │   │                     # Announcement, Application
     │   │   ├── dto/              # Request/response records
     │   │   ├── entity/           # User, Election, Candidate, CandidatePhoto,
-    │   │   │                     # EligibleVoter, Vote, OtpToken, AuditLog
-    │   │   ├── enums/            # Role, ElectionStatus, ResultMode
+    │   │   │                     # EligibleVoter, Vote, OtpToken, AuditLog,
+    │   │   │                     # Announcement, CandidateApplication, ElectionCoAdmin
+    │   │   ├── enums/            # Role (VOTER, ADMIN, CO_ADMIN), ElectionStatus, ResultMode
     │   │   ├── exception/        # ApiException, GlobalExceptionHandler
     │   │   ├── repository/       # Spring Data JPA repositories
     │   │   ├── scheduler/        # Status sync, result publishing, cleanup
     │   │   ├── security/         # JwtUtil, JwtAuthenticationFilter, AuthUser
     │   │   ├── service/          # Auth, Otp, Vote, Election, Result, Sse,
-    │   │   │                     # Email (Brevo/Resend/SMTP), VoterList, RateLimit, Audit
+    │   │   │                     # Email (Brevo/Resend/SMTP), VoterList, RateLimit, Audit,
+    │   │   │                     # Announcement, Application
     │   │   └── util/             # CsvUtil, EmailUtil
     │   └── resources/
     │       ├── application.properties
@@ -639,9 +718,9 @@ online-voting-system/
 | Page | Audience | Purpose |
 |---|---|---|
 | `index.html` | Everyone | Email → OTP sign-in |
-| `vote.html` | Voters | Elections list, candidates, cast vote |
+| `vote.html` | Voters | Announcements, elections list, candidates and manifestos, apply as candidate, cast vote, receipt code |
 | `results.html` | Voters | Results, live-updating in `LIVE` mode |
-| `admin.html` | Admins | Elections, candidates, voters, turnout, results, settings, audit log |
+| `admin.html` | Admins and co-admins | Elections, plus tabs for candidates, voter list, turnout, results, announcements, applications and election settings; co-admin management and audit log for full admins |
 
 ---
 
@@ -651,6 +730,7 @@ online-voting-system/
 |---|---|---|
 | Status sync | Every minute | Moves elections `UPCOMING → ACTIVE → CLOSED` |
 | Result publisher | Every minute | Marks `SCHEDULED` / `ON_CLOSE` results as published |
+| Announcement publisher | Every minute | Publishes scheduled announcements whose time has arrived |
 | Cleanup | Hourly | Deletes stale OTPs and purges old rate-limit entries |
 | SSE heartbeat | Every 25 s | Keeps live-result connections alive through proxies |
 
@@ -658,6 +738,9 @@ online-voting-system/
 
 ## ⚠️ Known limitations
 
+- **Candidacy applications are open.** Any signed-in user can apply to any election that is not closed, and there is no eligibility check or application deadline. Admin review is the only gate. Application photos are served from a public URL.
+- **Vote receipts do not make ballots anonymous** (see Security design). The vote screen's wording about anonymity is stronger than what the database guarantees.
+- **Hard delete.** Deleting an election or using *Reset all elections* removes votes permanently.
 - **Rate limiting is in memory.** It resets on restart and is per server instance.
 - **Votes are linked to users** (simple and auditable). For fully anonymous ballots, split `votes` into a "has voted" table and a separate ballot table.
 - **SSE subscribers are per instance.** With several instances, live updates reach only viewers connected to the instance that handled the vote.
