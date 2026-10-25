@@ -2,6 +2,7 @@ target/
 .idea/
 *.iml
 .vscode/
+.settings/
 .env
 *.log
 data/

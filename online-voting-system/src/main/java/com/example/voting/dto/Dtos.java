@@ -25,7 +25,7 @@ public final class Dtos {
             ResultMode resultMode,
             Instant resultsPublishAt,
             Boolean restrictToEligibleList,
-            /** Comma-separated extra email domains allowed for this election (e.g. "student.annauniv.edu"). Leave blank to use the global domain only. */
+            // Comma-separated extra email domains allowed for this election (e.g. "student.annauniv.edu"). Leave blank to use the global domain only.
             @Size(max = 1000) String allowedDomains) {}
 
     public record ResultSettingsRequest(@NotNull ResultMode mode, Instant resultsPublishAt) {}

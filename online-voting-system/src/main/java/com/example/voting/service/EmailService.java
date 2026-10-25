@@ -35,8 +35,11 @@ public class EmailService {
     /** Returns the mail sender only if an SMTP host is really set (an empty SMTP_HOST means "print codes in the console"). */
     private JavaMailSender activeSender() {
         JavaMailSender s = mailSender.getIfAvailable();
-        if (s instanceof JavaMailSenderImpl impl && (impl.getHost() == null || impl.getHost().isBlank())) {
-            return null;
+        if (s instanceof JavaMailSenderImpl impl) {
+            String host = impl.getHost();
+            if (host == null || host.isBlank()) {
+                return null;
+            }
         }
         return s;
     }
@@ -46,8 +49,11 @@ public class EmailService {
         if (from != null && !from.isBlank() && !from.equals("no-reply@voting.local")) {
             return from.trim();
         }
-        if (sender instanceof JavaMailSenderImpl impl && impl.getUsername() != null && !impl.getUsername().isBlank()) {
-            return impl.getUsername().trim();
+        if (sender instanceof JavaMailSenderImpl impl) {
+            String username = impl.getUsername();
+            if (username != null && !username.isBlank()) {
+                return username.trim();
+            }
         }
         return from != null && !from.isBlank() ? from.trim() : "no-reply@voting.local";
     }
