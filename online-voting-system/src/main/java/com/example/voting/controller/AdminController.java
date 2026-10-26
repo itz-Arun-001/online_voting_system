@@ -60,6 +60,13 @@ public class AdminController {
         return electionService.listForAdmin(me);
     }
 
+    @GetMapping("/elections/{id}")
+    public ElectionView election(@PathVariable Long id, @AuthenticationPrincipal AuthUser me) {
+        electionService.requireElectionAccess(id, me);
+        Election e = electionService.get(id);
+        return electionService.toView(e, null);
+    }
+
     @PostMapping("/elections")
     public ElectionView create(@Valid @RequestBody ElectionRequest r, @AuthenticationPrincipal AuthUser me) {
         if (!me.isFullAdmin()) throw ApiException.forbidden("Only full admins can create new elections.");
@@ -245,10 +252,45 @@ public class AdminController {
         return electionService.toView(e, null);
     }
 
+    @PostMapping(value = "/elections/{id}/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ElectionView uploadCover(@PathVariable Long id, @RequestParam("file") MultipartFile file, @AuthenticationPrincipal AuthUser me) {
+        electionService.requireElectionAccess(id, me);
+        Election e = electionService.setCoverPhoto(id, file);
+        audit.log(me, "SET_ELECTION_COVER", "election=" + id);
+        return electionService.toView(e, null);
+    }
+
+    @PutMapping("/elections/{id}/cover-url")
+    public ElectionView setCoverUrl(@PathVariable Long id, @RequestBody java.util.Map<String, String> body, @AuthenticationPrincipal AuthUser me) {
+        electionService.requireElectionAccess(id, me);
+        Election e = electionService.get(id);
+        String url = body != null ? body.get("coverUrl") : null;
+        e.setCoverUrl(url != null && !url.isBlank() ? url.trim() : null);
+        electionService.save(e);
+        audit.log(me, "SET_ELECTION_COVER_URL", "election=" + id);
+        return electionService.toView(e, null);
+    }
+
+    @DeleteMapping("/elections/{id}/cover")
+    public ElectionView removeCover(@PathVariable Long id, @AuthenticationPrincipal AuthUser me) {
+        electionService.requireElectionAccess(id, me);
+        Election e = electionService.removeCoverPhoto(id);
+        audit.log(me, "REMOVE_ELECTION_COVER", "election=" + id);
+        return electionService.toView(e, null);
+    }
+
+    @PostMapping("/elections/{id}/announce-winner")
+    public AnnouncementView announceWinner(@PathVariable Long id, @AuthenticationPrincipal AuthUser me) {
+        com.example.voting.entity.Announcement a = electionService.announceWinner(id, me);
+        audit.log(me, "ANNOUNCE_WINNER", "election=" + id);
+        return new AnnouncementView(a.getId(), a.getElectionId(), a.getMessage(), a.getPublishedAt(), a.getScheduledAt());
+    }
+
     @PostMapping("/elections/{id}/publish-results")
     public ElectionView publish(@PathVariable Long id, @AuthenticationPrincipal AuthUser me) {
         electionService.requireElectionAccess(id, me);
         Election e = electionService.publishResults(id);
+        electionService.autoAnnounceWinnerIfDue(id);
         audit.log(me, "PUBLISH_RESULTS", "election=" + id);
         return electionService.toView(e, null);
     }

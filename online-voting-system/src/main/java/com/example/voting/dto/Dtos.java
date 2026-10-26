@@ -26,7 +26,8 @@ public final class Dtos {
             Instant resultsPublishAt,
             Boolean restrictToEligibleList,
             // Comma-separated extra email domains allowed for this election (e.g. "student.annauniv.edu"). Leave blank to use the global domain only.
-            @Size(max = 1000) String allowedDomains) {}
+            @Size(max = 1000) String allowedDomains,
+            @Size(max = 1000) String coverUrl) {}
 
     public record ResultSettingsRequest(@NotNull ResultMode mode, Instant resultsPublishAt) {}
 
@@ -41,7 +42,8 @@ public final class Dtos {
     public record ElectionView(Long id, String title, String description, Instant startTime, Instant endTime,
                                ElectionStatus status, ResultMode resultMode, Instant resultsPublishAt,
                                boolean resultsPublished, boolean resultsVisible, boolean restrictToEligibleList,
-                               Boolean hasVoted, String allowedDomains) {}
+                               Boolean hasVoted, String allowedDomains, String coverUrl,
+                               String winnerName, Long winnerVotes) {}
 
     public record CandidateView(Long id, String name, String description, String manifesto, String photoUrl) {}
     public record CandidateResult(Long candidateId, String name, long votes) {}

@@ -30,7 +30,13 @@ public class DataInitializer {
                     "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check1",
                     "ALTER TABLE users DROP CONSTRAINT IF EXISTS \"users_role_check1\"",
                     "ALTER TABLE users DROP CHECK IF EXISTS users_role_check",
-                    "ALTER TABLE users DROP CHECK users_role_check"
+                    "ALTER TABLE users DROP CHECK users_role_check",
+                    "ALTER TABLE elections DROP CONSTRAINT IF EXISTS elections_result_mode_check",
+                    "ALTER TABLE elections DROP CONSTRAINT IF EXISTS \"elections_result_mode_check\"",
+                    "ALTER TABLE elections DROP CONSTRAINT IF EXISTS elections_result_mode_check1",
+                    "ALTER TABLE elections DROP CONSTRAINT IF EXISTS \"elections_result_mode_check1\"",
+                    "ALTER TABLE elections DROP CHECK IF EXISTS elections_result_mode_check",
+                    "ALTER TABLE elections DROP CHECK elections_result_mode_check"
                 };
                 for (String sql : directDrops) {
                     try (var s = conn.createStatement()) {

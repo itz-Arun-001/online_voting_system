@@ -20,7 +20,11 @@ async function api(path, opts = {}) {
     location.href = '/index.html';
   }
   if (!res.ok) {
-    const err = new Error((data && (data.message || data.error)) || 'Request failed (' + res.status + ').');
+    let msg = (data && (data.message || data.error));
+    if (!msg || msg === 'Request failed.') {
+      msg = 'Request failed (' + res.status + (res.statusText ? ' ' + res.statusText : '') + ').';
+    }
+    const err = new Error(msg);
     err.status = res.status;
     throw err;
   }
@@ -174,10 +178,32 @@ function renderComparisonChart(r) {
   const chartId = 'chart_' + Math.random().toString(36).substring(2, 9);
   const medals = ['🥇', '🥈', '🥉'];
 
+  const isClosed = r.status === 'CLOSED';
+  const winnerSpotlightHtml = (isClosed && !isTie && leader && leader.votes > 0) ? `
+    <div class="vh-winner-spotlight">
+      <div class="vh-winner-cup">🏆</div>
+      <div class="vh-winner-info">
+        <span class="vh-winner-tag">OFFICIAL WINNER</span>
+        <h2 class="vh-winner-title">${esc(leader.name)}</h2>
+        <p class="vh-winner-desc">Declared winner with ${leader.votes} votes (${total ? ((leader.votes / total) * 100).toFixed(1) : 0}% of total ballots cast). Congratulations!</p>
+      </div>
+    </div>
+  ` : (isClosed && isTie && leader && leader.votes > 0 ? `
+    <div class="vh-winner-spotlight" style="border-color:#3b82f6;background:linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);">
+      <div class="vh-winner-cup">🤝</div>
+      <div class="vh-winner-info">
+        <span class="vh-winner-tag" style="background:#2563eb;">OFFICIAL RESULT: TIE</span>
+        <h2 class="vh-winner-title" style="color:#1e40af;">Tie for First Place</h2>
+        <p class="vh-winner-desc" style="color:#1e3a8a;">Leading candidates tied with ${leader.votes} votes each.</p>
+      </div>
+    </div>
+  ` : '');
+
   const statsHtml = `
+    ${winnerSpotlightHtml}
     <div class="figures" style="margin-bottom:16px">
       <div><dt>Total Votes</dt><dd>${total}</dd></div>
-      <div><dt>Leading</dt><dd style="font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${total > 0 ? (isTie ? '🤝 Tie (' + leader.votes + ')' : '👑 ' + esc(leader.name)) : '—'}</dd></div>
+      <div><dt>${isClosed ? 'Winner' : 'Leading'}</dt><dd style="font-size:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${total > 0 ? (isTie ? '🤝 Tie (' + leader.votes + ')' : (isClosed ? '🏆 ' : '👑 ') + esc(leader.name)) : '—'}</dd></div>
       <div><dt>Candidates</dt><dd>${sorted.length}</dd></div>
     </div>
   `;
@@ -187,12 +213,13 @@ function renderComparisonChart(r) {
     const barWidth = total ? pct : 0;
     const color = COLORS[i % COLORS.length];
     const isLeading = total > 0 && c.votes === leader.votes;
+    const winnerTag = isClosed ? '<span style="font-size:12px;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:4px;font-weight:700;border:1px solid #fcd34d;margin-left:6px;">🏆 WINNER</span>' : '<span style="font-size:12px;color:#d97706;margin-left:6px;">👑 Leader</span>';
     return `
       <div class="compare-bar-row">
         <div class="compare-bar-info">
           <div class="compare-candidate">
             <span class="compare-rank rank-${i+1}">${medals[i] || (i+1)}</span>
-            <span class="compare-name">${esc(c.name)}${isLeading && !isTie ? ' <span style="font-size:12px;color:#d97706">👑 Leader</span>' : ''}</span>
+            <span class="compare-name">${esc(c.name)}${isLeading && !isTie ? winnerTag : ''}</span>
           </div>
           <div class="compare-stats">
             <strong>${c.votes}</strong> ${c.votes === 1 ? 'vote' : 'votes'}
@@ -259,4 +286,38 @@ function switchChartView(chartId, view, btn) {
     bars.style.display = 'none';
     cols.style.display = 'block';
   }
+}
+
+// Candidate Photo Modal Lightbox
+function openPhotoModal(url, name) {
+  if (!url) return;
+  let modal = document.getElementById('globalPhotoModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'globalPhotoModal';
+    modal.className = 'vh-modal-backdrop';
+    modal.style.display = 'none';
+    modal.innerHTML = `
+      <div class="vh-photo-modal-card">
+        <div style="position:relative;background:#090d16;text-align:center;">
+          <img id="globalPhotoModalImg" class="vh-photo-modal-img" src="" alt="">
+          <button type="button" class="vh-modal-close" onclick="closePhotoModal()" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.6);color:#fff;border-radius:50%;width:32px;height:32px;border:none;cursor:pointer;font-size:16px;display:grid;place-items:center;">✕</button>
+        </div>
+        <div class="vh-photo-modal-footer">
+          <h4 id="globalPhotoModalTitle" style="margin:0;font-size:16px;color:var(--ink);"></h4>
+          <button type="button" class="btn plain small" onclick="closePhotoModal()">Close</button>
+        </div>
+      </div>
+    `;
+    modal.addEventListener('click', (e) => { if (e.target.id === 'globalPhotoModal') closePhotoModal(); });
+    document.body.appendChild(modal);
+  }
+  document.getElementById('globalPhotoModalImg').src = url;
+  document.getElementById('globalPhotoModalTitle').textContent = name || 'Candidate Photo';
+  modal.style.display = 'flex';
+}
+
+function closePhotoModal() {
+  const modal = document.getElementById('globalPhotoModal');
+  if (modal) modal.style.display = 'none';
 }

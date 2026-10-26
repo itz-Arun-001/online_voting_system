@@ -3,103 +3,273 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Admin - College Election</title>
+<title>Admin — CampusVote</title>
+<link rel="icon" type="image/png" href="images/logo.png">
 <link rel="stylesheet" href="css/style.css">
+<style>
+  .vh-tab-pane { display: none; }
+  .vh-tab-pane.active { display: block; animation: vhFadeIn 0.2s ease-in; }
+  @keyframes vhFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .vh-card { background: var(--paper); border: 1px solid var(--vh-border); border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.02); }
+</style>
 </head>
 <body>
-<main class="sheet wide">
-  <header class="top"><a class="brand" href="/">College Election</a><nav id="nav"></nav></header>
-  <h1>Election administration</h1>
-  <div id="msg" aria-live="polite"></div>
+<div class="vh-app">
+  <!-- Left Sidebar Navigation -->
+  <aside class="vh-sidebar" id="sidebar">
+    <a class="vh-brand" href="admin.html">
+      <span class="vh-brand-logo"></span>
+      CampusVote
+    </a>
 
-  <section>
-    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 style="margin:0">Elections</h2>
-      <button id="resetAllBtn" class="btn danger small" data-act="resetAll" style="display:none">Reset all elections</button>
-    </div>
-    <div id="elections" class="scroll"></div>
-    <details id="createElectionDetails">
-      <summary>Create an election</summary>
-      <form id="newForm" style="margin-top:14px">
-        <label for="n_title">Title</label><input id="n_title" type="text" required maxlength="200">
-        <label for="n_desc">Description (optional)</label><textarea id="n_desc" maxlength="2000"></textarea>
-        <label for="n_start">Voting opens</label><input id="n_start" type="datetime-local" required>
-        <label for="n_end">Voting closes</label><input id="n_end" type="datetime-local" required>
-        <label for="n_mode">Show results to voters</label>
-        <select id="n_mode">
-          <option value="ON_CLOSE">When the election closes</option>
-          <option value="LIVE">Live, while voting is open</option>
-          <option value="SCHEDULED">At a set date and time</option>
-          <option value="MANUAL">When I publish them</option>
-        </select>
-        <div id="n_pubWrap" hidden><label for="n_pub">Publish results at</label><input id="n_pub" type="datetime-local"></div>
+    <nav class="vh-nav">
+      <button type="button" class="vh-nav-item active" data-admin-tab="elections">
+        <span class="vh-nav-icon">🗳️</span>
+        Elections
+      </button>
+      <button type="button" class="vh-nav-item" data-admin-tab="create" id="navCreateElection">
+        <span class="vh-nav-icon">➕</span>
+        Create Election
+      </button>
+      <button type="button" class="vh-nav-item" data-admin-tab="coadmins" id="navCoadmins">
+        <span class="vh-nav-icon">👥</span>
+        Co-Admins
+      </button>
+      <button type="button" class="vh-nav-item" data-admin-tab="audit" id="navAudit">
+        <span class="vh-nav-icon">📜</span>
+        Audit Log
+      </button>
+      <a href="vote.html" class="vh-nav-item" style="margin-top:auto;background:var(--faint);color:var(--vh-forest);">
+        <span class="vh-nav-icon">🎓</span>
+        Student Portal →
+      </a>
+    </nav>
 
-        <label style="margin-top:16px;font-weight:bold">How should voters be authorized?</label>
-        <div style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px;margin:8px 0 16px 0">
-          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:12px;font-weight:normal">
-            <input type="radio" name="n_eligibility" value="domain" checked style="margin-top:4px">
-            <div>
-              <strong>Option 1: Vote by College Mail ID Domain</strong>
-              <div class="hint" style="margin:2px 0 0 0">Anyone with an allowed college email address can vote directly. No CSV voter list required.</div>
-            </div>
-          </label>
-          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0;font-weight:normal">
-            <input type="radio" name="n_eligibility" value="voterlist" style="margin-top:4px">
-            <div>
-              <strong>Option 2: Vote by Voter List (CSV)</strong>
-              <div class="hint" style="margin:2px 0 0 0">Only students specifically uploaded in a CSV file can vote.</div>
-            </div>
-          </label>
-        </div>
-
-        <div id="n_domainsWrap">
-          <label for="n_domains">Allowed college mail ID domain(s)</label>
-          <input id="n_domains" type="text" maxlength="1000" placeholder="e.g. student.annauniv.edu">
-          <p class="hint">Comma-separated domains (without leading @). Leave blank to use the default college domain.</p>
-        </div>
-
-        <button class="btn" style="margin-top:16px">Create election</button>
-      </form>
-    </details>
-  </section>
-
-  <section id="manage" hidden></section>
-
-  <section id="coadmins">
-    <h2>Co-admins</h2>
-    <p class="meta">Co-admins can manage assigned elections. Full admins can add co-admins from any email domain and configure which elections they can manage.</p>
-    <div id="coadminList"></div>
-    <form id="promoteForm" style="margin-top:14px">
-      <label for="promote_email">Add co-admin</label>
-      <div class="row" style="flex-wrap:wrap;gap:8px">
-        <input id="promote_email" type="email" required placeholder="email@anydomain.com" style="margin:0;max-width:280px">
-        <input id="promote_name" type="text" placeholder="Name (optional)" style="margin:0;max-width:200px">
-        <button class="btn">Add co-admin</button>
+    <!-- Sidebar User Footer -->
+    <div class="vh-sidebar-footer">
+      <div class="vh-avatar" id="adminAvatar">A</div>
+      <div class="vh-user-info">
+        <div class="vh-user-name" id="adminEmail">admin@college.edu</div>
+        <div class="vh-user-sub" id="adminRole">Administrator</div>
       </div>
-      <p class="hint">Co-admins can have any email domain (they do not need to be voters or have signed in before). After adding, use "Assign elections" to choose which elections they can manage.</p>
-    </form>
-  </section>
-
-  <dialog id="assignDialog" style="border:1px solid var(--border,#ccc);border-radius:8px;padding:20px;max-width:500px;width:90%;background:var(--sheet,#fff);color:var(--text,#111);box-shadow:0 8px 30px rgba(0,0,0,0.2)">
-    <h3 id="assignTitle" style="margin-top:0">Assign Elections</h3>
-    <p class="meta" id="assignSubtitle" style="margin-bottom:12px"></p>
-    <div id="assignList" style="max-height:300px;overflow-y:auto;margin:16px 0;display:flex;flex-direction:column;gap:8px"></div>
-    <div class="row" style="justify-content:flex-end;gap:8px">
-      <button type="button" class="btn plain" id="assignCancel">Cancel</button>
-      <button type="button" class="btn" id="assignSave">Save assignments</button>
+      <button type="button" class="vh-logout-btn" id="adminLogoutBtn" title="Log Out" style="display:inline-flex;align-items:center;gap:4px;padding:6px 10px;font-size:12px;font-weight:600;width:auto;border-radius:8px;">
+        <span>Log Out</span> 🚪
+      </button>
     </div>
-  </dialog>
+  </aside>
 
-  <section id="auditSection">
-    <h2>Audit log</h2>
-    <div id="audit" class="scroll"></div>
-  </section>
-</main>
+  <!-- Main Content -->
+  <main class="vh-main">
+    <header class="vh-header">
+      <div>
+        <h1 class="vh-title" id="adminPageTitle">Election Administration</h1>
+        <p class="vh-subtitle" id="adminPageSub">Manage campus elections, ballots, candidate nominations, and certified results.</p>
+      </div>
+      <div class="vh-header-actions">
+        <button type="button" class="btn plain small" id="headerLogoutBtn" style="color:var(--bad,#dc2626);display:inline-flex;align-items:center;gap:6px;font-weight:600;">🚪 Log Out</button>
+        <a href="vote.html" class="btn plain small">Switch to Student View →</a>
+        <div class="vh-date-badge" id="adminDateBadge">📅 Today</div>
+      </div>
+    </header>
+
+    <div id="msg" aria-live="polite"></div>
+
+    <!-- ──────────────────────────────────────────
+         PAGE 1: ELECTIONS OVERVIEW & MANAGE
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane active" id="pane-elections">
+      <!-- List View -->
+      <div id="electionsListWrap">
+        <div class="vh-section-head">
+          <h2 class="vh-section-title" style="font-size:20px;">All Elections</h2>
+          <div style="display:flex;gap:10px;">
+            <button type="button" class="btn small" onclick="switchAdminTab('create')">➕ New Election</button>
+            <button id="resetAllBtn" class="btn danger small" data-act="resetAll" style="display:none">Reset all elections</button>
+          </div>
+        </div>
+
+        <div id="elections" class="scroll"></div>
+      </div>
+
+      <!-- Manage Selected Election View -->
+      <div id="manage" hidden class="vh-card" style="margin-top:20px;"></div>
+    </section>
+
+    <!-- ──────────────────────────────────────────
+         PAGE 2: CREATE ELECTION
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane" id="pane-create">
+      <div class="vh-card" style="max-width:760px;">
+        <h2 style="font-size:20px;margin:0 0 6px;">Create a New Election</h2>
+        <p class="meta" style="margin-bottom:20px;">Configure election schedule, voting authorization method, and result visibility.</p>
+
+        <form id="newForm">
+          <label for="n_title">Election Title</label>
+          <input id="n_title" type="text" required maxlength="200" placeholder="e.g. Student Council General Election 2026">
+
+          <label for="n_desc">Description / Guidelines (optional)</label>
+          <textarea id="n_desc" maxlength="2000" placeholder="Provide context, responsibilities of the role, or voting rules..."></textarea>
+
+          <div class="row" style="gap:16px;margin-bottom:8px;">
+            <div style="flex:1;min-width:240px;">
+              <label for="n_start">Voting Opens</label>
+              <input id="n_start" type="datetime-local" required>
+            </div>
+            <div style="flex:1;min-width:240px;">
+              <label for="n_end">Voting Closes</label>
+              <input id="n_end" type="datetime-local" required>
+            </div>
+          </div>
+
+          <label for="n_mode">Show Results to Voters</label>
+          <select id="n_mode">
+            <option value="ON_CLOSE">When the election closes</option>
+            <option value="LIVE">Live, while voting is open</option>
+            <option value="SCHEDULED">At a set date and time</option>
+            <option value="MANUAL">When I publish them</option>
+          </select>
+          <div id="n_pubWrap" hidden style="margin-top:10px;">
+            <label for="n_pub">Publish Results At</label>
+            <input id="n_pub" type="datetime-local">
+          </div>
+
+          <label style="margin-top:20px;font-weight:700;">How Should Voters Be Authorized?</label>
+          <div style="background:var(--faint);border:1.5px solid var(--vh-border);border-radius:12px;padding:16px;margin:8px 0 16px 0;">
+            <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin-bottom:14px;font-weight:normal;">
+              <input type="radio" name="n_eligibility" value="domain" checked style="margin-top:4px;">
+              <div>
+                <strong>Option 1: Vote by College Email Domain</strong>
+                <div class="hint" style="margin:2px 0 0 0;">Anyone with an allowed college email address can sign in and vote directly. No CSV voter list required.</div>
+              </div>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;margin:0;font-weight:normal;">
+              <input type="radio" name="n_eligibility" value="voterlist" style="margin-top:4px;">
+              <div>
+                <strong>Option 2: Vote by Voter List (CSV)</strong>
+                <div class="hint" style="margin:2px 0 0 0;">Only students explicitly uploaded in a CSV file can vote.</div>
+              </div>
+            </label>
+          </div>
+
+          <div id="n_domainsWrap">
+            <label for="n_domains">Allowed College Email Domain(s)</label>
+            <input id="n_domains" type="text" maxlength="1000" placeholder="e.g. student.college.edu">
+            <p class="hint">Comma-separated domains (without leading @). Leave blank to use the default college domain.</p>
+          </div>
+
+          <div style="margin-top:16px;">
+            <label for="n_coverUrl">Cover Photo URL (optional)</label>
+            <input id="n_coverUrl" type="url" placeholder="https://images.unsplash.com/... or custom banner image URL">
+            <p class="hint">Banner photo shown on student ballots and dashboard cards. Can also be uploaded as a file after creation.</p>
+          </div>
+
+          <div style="margin-top:24px;display:flex;gap:12px;">
+            <button class="btn" style="padding:11px 24px;">Create Election</button>
+            <button type="button" class="btn plain" onclick="switchAdminTab('elections')">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ──────────────────────────────────────────
+         PAGE 3: CO-ADMINS
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane" id="pane-coadmins">
+      <div class="vh-card">
+        <h2 style="margin:0 0 4px;font-size:20px;">Co-Administrators</h2>
+        <p class="meta" style="margin-bottom:20px;">Co-admins can manage assigned elections. Full admins can add co-admins from any email domain and configure which elections they can manage.</p>
+        <div id="coadminList" class="scroll"></div>
+        
+        <form id="promoteForm" style="margin-top:24px;background:var(--faint);padding:20px;border-radius:12px;border:1px solid var(--vh-border);">
+          <label for="promote_email" style="font-size:14px;font-weight:700;">Add Co-Admin</label>
+          <div class="row" style="flex-wrap:wrap;gap:10px;margin-bottom:8px;">
+            <input id="promote_email" type="email" required placeholder="email@anydomain.com" style="margin:0;max-width:280px">
+            <input id="promote_name" type="text" placeholder="Name (optional)" style="margin:0;max-width:200px">
+            <button class="btn">Add Co-Admin</button>
+          </div>
+          <p class="hint" style="margin:0;">Co-admins can have any email domain. After adding, click "Assign elections" to choose which elections they can manage.</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ──────────────────────────────────────────
+         PAGE 4: AUDIT LOG
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane" id="pane-audit">
+      <div class="vh-card">
+        <h2 style="margin:0 0 4px;font-size:20px;">System Audit Log</h2>
+        <p class="meta" style="margin-bottom:20px;">Immutable tamper-evident record of all election administrative actions and voting lifecycle events.</p>
+        <div id="audit" class="scroll"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Assign Elections Modal -->
+<dialog id="assignDialog" style="border:1px solid var(--vh-border);border-radius:16px;padding:24px;max-width:500px;width:90%;background:var(--paper);color:var(--ink);box-shadow:0 12px 40px rgba(0,0,0,0.15)">
+  <h3 id="assignTitle" style="margin-top:0;font-size:18px;">Assign Elections</h3>
+  <p class="meta" id="assignSubtitle" style="margin-bottom:12px"></p>
+  <div id="assignList" style="max-height:300px;overflow-y:auto;margin:16px 0;display:flex;flex-direction:column;gap:8px"></div>
+  <div class="row" style="justify-content:flex-end;gap:10px">
+    <button type="button" class="btn plain" id="assignCancel">Cancel</button>
+    <button type="button" class="btn" id="assignSave">Save assignments</button>
+  </div>
+</dialog>
+
 <script src="js/app.js"></script>
 <script>
 const myRole = requireLogin('ADMIN');
 const isFullAdmin = (sessionStorage.getItem('role') === 'ADMIN');
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+// Setup Admin user details
+const adminEmail = sessionStorage.getItem('email') || 'admin@college.edu';
+const aEmailEl = $('#adminEmail'); if (aEmailEl) aEmailEl.textContent = adminEmail;
+const aAvatarEl = $('#adminAvatar'); if (aAvatarEl) aAvatarEl.textContent = adminEmail.charAt(0).toUpperCase();
+const aRoleEl = $('#adminRole'); if (aRoleEl) aRoleEl.textContent = isFullAdmin ? 'Super Administrator' : 'Election Co-Admin';
+const adminLogout = () => { sessionStorage.clear(); localStorage.removeItem('token'); location.href = 'index.html'; };
+const aLogoutBtn = $('#adminLogoutBtn'); if (aLogoutBtn) aLogoutBtn.onclick = adminLogout;
+const aHLogoutBtn = $('#headerLogoutBtn'); if (aHLogoutBtn) aHLogoutBtn.onclick = adminLogout;
+const aDateBadge = $('#adminDateBadge'); if (aDateBadge) {
+  const dNow = new Date();
+  aDateBadge.textContent = '📅 ' + dNow.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// Sidebar Tab Navigation
+const ADMIN_TITLES = {
+  elections: ['Election Administration', 'Manage campus elections, ballots, candidate nominations, and certified results.'],
+  create: ['Create New Election', 'Define ballot parameters, eligibility rules, and result publication mode.'],
+  coadmins: ['Co-Administrators', 'Authorize department coordinators and assign election management rights.'],
+  audit: ['Audit Trail', 'Cryptographic, immutable ledger of all administrative and voting lifecycle events.']
+};
+
+function switchAdminTab(tabName) {
+  if ($('#msg')) $('#msg').innerHTML = '';
+  $$('.vh-nav-item[data-admin-tab]').forEach(b => b.classList.remove('active'));
+  const btn = $(`[data-admin-tab="${tabName}"]`);
+  if (btn) btn.classList.add('active');
+
+  $$('.vh-tab-pane').forEach(p => p.classList.remove('active'));
+  const target = $(`#pane-${tabName}`);
+  if (target) target.classList.add('active');
+
+  if (ADMIN_TITLES[tabName]) {
+    $('#adminPageTitle').textContent = ADMIN_TITLES[tabName][0];
+    $('#adminPageSub').textContent = ADMIN_TITLES[tabName][1];
+  }
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (tabName === 'elections') loadElections();
+  if (tabName === 'coadmins' && isFullAdmin) loadCoAdmins();
+  if (tabName === 'audit' && isFullAdmin) loadAudit();
+}
+
+$$('.vh-nav-item[data-admin-tab]').forEach(btn => {
+  btn.onclick = () => switchAdminTab(btn.dataset.adminTab);
+});
+
 const MODES = { LIVE: 'Live, while voting is open', ON_CLOSE: 'When the election closes', SCHEDULED: 'At a set date and time', MANUAL: 'When an admin publishes' };
 const TABS = { candidates: 'Candidates', voters: 'Voter list', turnout: 'Turnout', results: 'Results', announcements: 'Announcements', applications: 'Applications', settings: 'Election settings' };
 const iso = (v) => new Date(v).toISOString();
@@ -117,48 +287,90 @@ async function loadElections() {
   const resetBtn = $('#resetAllBtn');
   if (resetBtn) resetBtn.style.display = (isFullAdmin && elections.length > 0) ? 'inline-block' : 'none';
   $('#elections').innerHTML = elections.length
-    ? `<table><thead><tr><th>Title</th><th>Voting window</th><th>Status</th><th>Voting method</th><th>Results shown</th><th></th></tr></thead><tbody>${elections.map((e) => `<tr>
-        <td>${esc(e.title)}</td><td>${esc(fmt(e.startTime))} to ${esc(fmt(e.endTime))}</td><td>${statusTag(e.status)}</td>
+    ? `<table><thead><tr><th>Title</th><th>Voting Window</th><th>Status</th><th>Voting Method</th><th>Results Mode</th><th>Actions</th></tr></thead><tbody>${elections.map((e) => `<tr>
+        <td><strong>${esc(e.title)}</strong></td>
+        <td>${esc(fmt(e.startTime))} to ${esc(fmt(e.endTime))}</td>
+        <td>${statusTag(e.status)}</td>
         <td>${e.restrictToEligibleList ? '<span class="tag">Voter list (CSV)</span>' : '<span class="tag ok">Domain: ' + esc(e.allowedDomains || '(default domain)') + '</span>'}</td>
         <td>${MODES[e.resultMode]}</td>
-        <td><button class="btn plain small" data-manage="${e.id}">Manage</button></td></tr>`).join('')}</tbody></table>`
+        <td><button class="btn small" data-manage="${e.id}">Manage Election →</button></td></tr>`).join('')}</tbody></table>`
     : (isFullAdmin
-        ? '<p class="empty">No elections yet. Create the first one below.</p>'
+        ? '<p class="empty">No elections created yet. Click "➕ New Election" above to launch your first campus election.</p>'
         : '<p class="empty">No elections assigned to your account yet. Contact an administrator to get access.</p>');
 }
+
 $('#elections').addEventListener('click', (ev) => {
   const b = ev.target.closest('[data-manage]'); if (!b) return;
-  sel = elections.find((e) => e.id === Number(b.dataset.manage)); tab = 'candidates'; vs = { kind: 'eligible', q: '', page: 0 };
-  renderManage(); $('#manage').scrollIntoView({ behavior: 'smooth' });
+  sel = elections.find((e) => Number(e.id) === Number(b.dataset.manage));
+  if (!sel) return;
+  tab = 'candidates'; vs = { kind: 'eligible', q: '', page: 0 };
+  renderManage();
 });
+
+function backToElectionsList() {
+  if ($('#msg')) $('#msg').innerHTML = '';
+  $('#manage').hidden = true;
+  $('#electionsListWrap').hidden = false;
+  sel = null;
+  loadElections();
+}
+
 $('#n_mode').onchange = () => { $('#n_pubWrap').hidden = $('#n_mode').value !== 'SCHEDULED'; };
+
 $('#newForm').addEventListener('submit', (ev) => { ev.preventDefault(); run(async () => {
   const mode = $('#n_mode').value;
   const isVoterList = $('input[name="n_eligibility"]:checked').value === 'voterlist';
   await api('/admin/elections', { method: 'POST', body: {
-    title: $('#n_title').value, description: $('#n_desc').value, startTime: iso($('#n_start').value), endTime: iso($('#n_end').value),
-    resultMode: mode, resultsPublishAt: mode === 'SCHEDULED' && $('#n_pub').value ? iso($('#n_pub').value) : null,
+    title: $('#n_title').value,
+    description: $('#n_desc').value,
+    startTime: iso($('#n_start').value),
+    endTime: iso($('#n_end').value),
+    resultMode: mode,
+    resultsPublishAt: mode === 'SCHEDULED' && $('#n_pub').value ? iso($('#n_pub').value) : null,
     restrictToEligibleList: isVoterList,
-    allowedDomains: $('#n_domains').value.trim() || null } });
-  ev.target.reset(); $('#n_pubWrap').hidden = true; say('Election created. Select Manage to add candidates.');
-  await loadElections(); loadAudit();
+    allowedDomains: $('#n_domains').value.trim() || null,
+    coverUrl: $('#n_coverUrl') ? $('#n_coverUrl').value.trim() || null : null
+  } });
+  ev.target.reset(); $('#n_pubWrap').hidden = true;
+  say('✅ Election created successfully! You can now manage candidates and settings.');
+  switchAdminTab('elections');
+  loadAudit();
 }); });
 
 // ---------- manage panel ----------
-async function reload() { await loadElections(); sel = elections.find((e) => sel && e.id === sel.id) || null; renderManage(); loadAudit(); }
+async function reload() { await loadElections(); sel = elections.find((e) => sel && Number(e.id) === Number(sel.id)) || null; renderManage(); loadAudit(); }
+
 function renderManage() {
+  if ($('#msg')) $('#msg').innerHTML = '';
   clearInterval(timer);
   const box = $('#manage');
-  if (!sel) { box.hidden = true; return; }
+  if (!sel) {
+    box.hidden = true;
+    $('#electionsListWrap').hidden = false;
+    return;
+  }
+  $('#electionsListWrap').hidden = true;
   box.hidden = false;
+
   const methodText = sel.restrictToEligibleList
     ? '<strong>Restricted to uploaded CSV voter list.</strong>'
     : `<strong>Open to all voters with domain: <code>${esc(sel.allowedDomains || '(default college domain)')}</code> (no CSV required).</strong>`;
-  box.innerHTML = `<h2>${esc(sel.title)} ${statusTag(sel.status)}</h2>
-    <p class="meta">Voting ${esc(fmt(sel.startTime))} to ${esc(fmt(sel.endTime))}. ${methodText}</p>
+
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <button type="button" class="vh-back-btn" onclick="backToElectionsList()">← Back to All Elections</button>
+      <span class="meta" style="margin:0;">Election ID: #${sel.id}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px;">
+      <h2 style="margin:0;font-size:22px;">${esc(sel.title)}</h2>
+      ${statusTag(sel.status)}
+    </div>
+    <p class="meta">Voting: ${esc(fmt(sel.startTime))} to ${esc(fmt(sel.endTime))}. ${methodText}</p>
     <nav class="tabs">${Object.entries(TABS).map(([k, v]) => `<a href="#" data-act="tab" data-tab="${k}" class="${k === tab ? 'on' : ''}">${v}</a>`).join('')}</nav>
     <div id="tabBody"></div>`;
+
   run(() => ({ candidates: tabCandidates, voters: tabVoters, turnout: tabTurnout, results: tabResults, announcements: tabAnnouncements, applications: tabApplications, settings: tabSettings }[tab]()));
+  box.scrollIntoView({ behavior: 'smooth' });
 }
 
 const PHOTO_OK = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -171,24 +383,29 @@ async function uploadPhoto(id, file) {
   const fd = new FormData(); fd.append('file', file);
   return api(`/admin/candidates/${id}/photo`, { method: 'POST', body: fd });
 }
-const thumb = (c) => c.photoUrl ? `<img class="thumb" src="${esc(c.photoUrl)}" alt="Photo of ${esc(c.name)}">` : '<span class="thumb none" aria-hidden="true"></span>';
+const thumb = (c) => c.photoUrl ? `<img class="thumb" src="${esc(c.photoUrl)}" alt="Photo of ${esc(c.name)}" title="Click to view full photo" onclick="openPhotoModal('${esc(c.photoUrl)}', '${esc(c.name)}')">` : '<span class="thumb none" aria-hidden="true"></span>';
 
 async function tabCandidates() {
   const list = await api(`/admin/elections/${sel.id}/candidates`);
   $('#tabBody').innerHTML = (list.length
-    ? `<table><thead><tr><th>Photo</th><th>Name</th><th>Description</th><th>Manifesto</th><th></th></tr></thead><tbody>${list.map((c) => `<tr><td>${thumb(c)}</td><td>${esc(c.name)}</td><td>${esc(c.description)}</td>
-        <td>${c.manifesto ? `<button type="button" class="manifesto-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'Hide ▲':'View ▼'">View ▼</button><span class="manifesto-text">${esc(c.manifesto)}</span>` : '<span class="meta">—</span>'}</td>
+    ? `<table><thead><tr><th>Photo</th><th>Name</th><th>Description</th><th>Manifesto</th><th>Actions</th></tr></thead><tbody>${list.map((c) => `<tr><td>${thumb(c)}</td><td><strong>${esc(c.name)}</strong></td><td>${esc(c.description)}</td>
+        <td>${c.manifesto ? `<button type="button" class="btn link small" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'Hide ▲':'View Manifesto ▼'">View Manifesto ▼</button><div class="manifesto-text">${esc(c.manifesto)}</div>` : '<span class="meta">—</span>'}</td>
         <td><label class="btn plain small filebtn">${c.photoUrl ? 'Change photo' : 'Add photo'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-photo="${c.id}" hidden></label>
         ${c.photoUrl ? `<button class="btn plain small" data-act="delPhoto" data-id="${c.id}">Remove photo</button>` : ''}
         <button class="btn danger small" data-act="delCand" data-id="${c.id}">Remove</button></td></tr>`).join('')}</tbody></table>`
-    : '<p class="empty">No candidates yet.</p>')
-    + `<h3>Add a candidate</h3><form data-form="cand"><label for="c_name">Name</label><input id="c_name" type="text" required maxlength="150">
-       <label for="c_desc">Short description (optional)</label><input id="c_desc" type="text" maxlength="1000">
-       <label for="c_manifesto">Manifesto / Agenda (optional)</label><textarea id="c_manifesto" maxlength="2000" placeholder="Candidate campaign promises and agenda..."></textarea>
-       <label for="c_photo">Photo (optional)</label><input id="c_photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
-       <p class="hint">JPG, PNG, WebP or GIF, up to 2 MB. A square photo looks best.</p>
-       <button class="btn">Add candidate</button></form>
-       <p class="hint">The candidate list and photos lock once the first vote is cast.</p>`;
+    : '<p class="empty">No candidates added yet. Fill out the form below to add a candidate.</p>')
+    + `<div style="background:var(--faint);padding:20px;border-radius:12px;border:1px solid var(--vh-border);margin-top:24px;">
+         <h3 style="margin-top:0;">Add a Candidate</h3>
+         <form data-form="cand">
+           <label for="c_name">Candidate Name</label><input id="c_name" type="text" required maxlength="150" placeholder="e.g. Priya Sharma">
+           <label for="c_desc">Short Slogan / Tagline (optional)</label><input id="c_desc" type="text" maxlength="1000" placeholder="e.g. Better Ideas, Brighter Future">
+           <label for="c_manifesto">Manifesto / Agenda (optional)</label><textarea id="c_manifesto" maxlength="2000" placeholder="Key promises and vision..."></textarea>
+           <label for="c_photo">Profile Photo (optional)</label><input id="c_photo" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+           <p class="hint">JPG, PNG, WebP or GIF, up to 2 MB. Square orientation recommended.</p>
+           <button class="btn">Add Candidate</button>
+         </form>
+         <p class="hint" style="margin-top:12px;">Candidate profiles and photos lock permanently once the first vote is cast.</p>
+       </div>`;
 }
 
 async function tabVoters() {
@@ -196,20 +413,21 @@ async function tabVoters() {
   const banner = sel.restrictToEligibleList
     ? '<p class="msg ok" style="margin-bottom:12px">This election is set to <strong>Option 2: Vote by Voter List</strong>. Only voters uploaded below can vote.</p>'
     : '<p class="msg ok" style="margin-bottom:12px">This election is set to <strong>Option 1: Vote by College Mail ID Domain</strong>. Any voter whose email ends with <code>' + esc(domains) + '</code> can vote directly without uploading a CSV file! (To switch to a CSV voter list, change the option in the <strong>Election settings</strong> tab).</p>';
-  $('#tabBody').innerHTML = banner + `<form data-form="upload"><label for="csv">Upload voter list (CSV)</label>
+  $('#tabBody').innerHTML = banner + `<form data-form="upload" style="background:var(--faint);padding:20px;border-radius:12px;border:1px solid var(--vh-border);margin-bottom:20px;">
+    <label for="csv">Upload Voter List (CSV)</label>
     <input id="csv" type="file" accept=".csv,text/csv" required>
-    <p class="hint">Columns: email, name, roll_number. A header row is optional. Emails are lowercased and duplicates are skipped. Only emails from: <strong>${esc(domains)}</strong> are accepted.</p>
-    <button class="btn">Upload list</button></form><div id="uploadResult"></div>
-    <h3>People on the list</h3><div id="rowsWrap"></div>`;
+    <p class="hint">Columns: email, name, roll_number. Duplicates are automatically skipped. Only emails from: <strong>${esc(domains)}</strong> are accepted.</p>
+    <button class="btn">Upload CSV List</button></form><div id="uploadResult"></div>
+    <h3>Registered Voters</h3><div id="rowsWrap"></div>`;
   vs = { kind: 'eligible', q: '', page: 0 };
   await rows();
 }
 
 async function tabTurnout() {
   const t = await api(`/admin/elections/${sel.id}/turnout`);
-  $('#tabBody').innerHTML = `<dl class="figures"><div><dt>On the list</dt><dd>${t.eligible}</dd></div><div><dt>Voted</dt><dd>${t.voted}</dd></div>
-    <div><dt>Not yet voted</dt><dd>${t.pending}</dd></div><div><dt>Turnout</dt><dd>${t.turnoutPercent}%</dd></div></dl>
-    <p class="hint">This shows who has voted, never who they voted for.</p>
+  $('#tabBody').innerHTML = `<dl class="figures"><div><dt>Eligible Voters</dt><dd>${t.eligible}</dd></div><div><dt>Votes Cast</dt><dd>${t.voted}</dd></div>
+    <div><dt>Pending</dt><dd>${t.pending}</dd></div><div><dt>Turnout</dt><dd>${t.turnoutPercent}%</dd></div></dl>
+    <p class="hint">This tracks participation turnout while preserving secret ballot voter privacy.</p>
     <nav class="tabs"><a href="#" data-act="kind" data-kind="voted" class="on">Voted</a><a href="#" data-act="kind" data-kind="notvoted">Not yet voted</a></nav>
     <div id="rowsWrap"></div>
     <div class="row" style="margin-top:16px"><button class="btn plain" data-act="export" data-type="voted">Download voted list</button>
@@ -220,134 +438,162 @@ async function tabTurnout() {
 
 async function rows() {
   const isEligible = vs.kind === 'eligible';
-  const url = isEligible
-    ? `/admin/elections/${sel.id}/voters/eligible?page=${vs.page}&size=20&q=${encodeURIComponent(vs.q)}`
-    : `/admin/elections/${sel.id}/voters/${vs.kind}?page=${vs.page}&size=20&q=${encodeURIComponent(vs.q)}`;
+  const subPath = isEligible ? 'eligible' : (vs.kind === 'voted' ? 'voted' : 'not-voted');
+  const url = `/admin/elections/${sel.id}/voters/${subPath}?page=${vs.page}&size=20&q=${encodeURIComponent(vs.q)}`;
   const p = await api(url);
   const wrap = $('#rowsWrap');
-  const searchBar = `<form data-form="search" class="row" style="margin:10px 0">
-    <input id="q" type="search" placeholder="Search by name, email or roll number" value="${esc(vs.q)}" style="margin:0;max-width:320px">
-    <button class="btn plain">Search</button></form>`;
-  if (!p.items.length) {
-    wrap.innerHTML = searchBar + `<p class="empty">${vs.q ? 'No matching voters.' : 'No voters yet.'}</p>`;
-    return;
-  }
-  const table = `<table><thead><tr><th>Email</th><th>Name</th><th>Roll</th>${isEligible ? '<th></th>' : '<th>Voted at</th>'}</tr></thead><tbody>${p.items.map((r) => `<tr>
+  wrap.innerHTML = `<div class="row" style="margin:12px 0 16px"><form data-form="search" class="row" style="flex:1"><input id="q" type="search" placeholder="Search by email, name or roll number..." value="${esc(vs.q)}" style="margin:0;max-width:320px"><button class="btn plain small">Search</button></form></div>
+    ${p.items.length ? `<table><thead><tr><th>Email</th><th>Name</th><th>Roll Number</th>${isEligible ? '<th>Actions</th>' : '<th>Voted At</th>'}</tr></thead><tbody>${p.items.map((r) => `<tr>
     <td>${esc(r.email)}</td><td>${esc(r.name || '—')}</td><td>${esc(r.rollNumber || '—')}</td>
-    ${isEligible ? `<td><button class="btn danger small" data-act="delVoter" data-email="${esc(r.email)}">Remove</button></td>` : `<td>${esc(fmt(r.votedAt))}</td>`}</tr>`).join('')}</tbody></table>`;
-  const pager = `<div class="row" style="justify-content:space-between;margin-top:10px">
-    <span>Page ${p.page + 1} of ${p.totalPages || 1} (${p.totalElements} total)</span>
+    ${isEligible ? `<td><button class="btn danger small" data-act="delVoter" data-email="${esc(r.email)}">Remove</button></td>` : `<td>${esc(fmt(r.votedAt))}</td>`}</tr>`).join('')}</tbody></table>` : '<p class="empty">No matching voters.</p>'}
+    <div class="pager" style="justify-content:space-between;margin-top:16px;"><span>Page ${p.page + 1} of ${Math.max(1, p.totalPages)} (${p.totalItems} total)</span>
     <div><button class="btn plain small" data-act="page" data-d="-1" ${p.first ? 'disabled' : ''}>Previous</button>
     <button class="btn plain small" data-act="page" data-d="1" ${p.last ? 'disabled' : ''}>Next</button></div></div>`;
-  wrap.innerHTML = searchBar + table + pager;
 }
 
 async function tabResults() {
-  const draw = async () => {
-    const r = await api(`/admin/elections/${sel.id}/results`);
-    $('#adminBars').innerHTML = renderComparisonChart(r);
-  };
-  const showAt = sel.resultsPublishAt ? localInput(sel.resultsPublishAt) : '';
-  $('#tabBody').innerHTML = `<p class="meta">You always see live counts here. Voters see them: <strong>${MODES[sel.resultMode].toLowerCase()}</strong>${sel.resultMode === 'SCHEDULED' && sel.resultsPublishAt ? ' (' + esc(fmt(sel.resultsPublishAt)) + ')' : ''}.
-    Right now voters ${sel.resultsVisible ? 'can' : 'cannot'} see them.</p>
-    <div id="adminBars"></div>
-    <div class="row" style="margin:14px 0"><button class="btn plain" data-act="export-results">Download results (CSV)</button>
-    ${sel.resultMode === 'MANUAL' && !sel.resultsPublished ? '<button class="btn" data-act="publish">Publish results to voters</button>' : ''}</div>
-    <h3>Change voter visibility</h3>
-    <form data-form="resultSettings">
-    <label for="r_mode">When can voters see results?</label>
-    <select id="r_mode">
-      <option value="ON_CLOSE" ${sel.resultMode === 'ON_CLOSE' ? 'selected' : ''}>When the election closes</option>
-      <option value="LIVE" ${sel.resultMode === 'LIVE' ? 'selected' : ''}>Live, while voting is open</option>
-      <option value="SCHEDULED" ${sel.resultMode === 'SCHEDULED' ? 'selected' : ''}>At a set date and time</option>
-      <option value="MANUAL" ${sel.resultMode === 'MANUAL' ? 'selected' : ''}>When an admin publishes</option>
-    </select>
-    <div id="r_pubWrap" ${sel.resultMode === 'SCHEDULED' ? '' : 'hidden'}><label for="r_pub">Publish at</label><input id="r_pub" type="datetime-local" value="${showAt}"></div>
-    <button class="btn">Save result setting</button></form>`;
+  let res;
+  try { res = await api(`/admin/elections/${sel.id}/results`); }
+  catch(e) { $('#tabBody').innerHTML = `<p class="msg err">${esc(e.message)}</p>`; return; }
+  $('#tabBody').innerHTML = renderComparisonChart(res) + `
+    <div class="row" style="margin:16px 0;gap:10px;flex-wrap:wrap;">
+      <button class="btn plain" data-act="export-results">Download results (CSV)</button>
+      <button class="btn plain" data-act="announce-winner">📢 Broadcast Winner Announcement</button>
+      ${sel.resultMode === 'MANUAL' && !sel.resultsPublished ? '<button class="btn" data-act="publish">Publish results to voters</button>' : ''}
+    </div>
+    <div class="vh-card" style="margin-top:20px;background:var(--faint);">
+      <h3 style="margin-top:0;">Result Visibility Settings</h3>
+      <form data-form="resultSettings">
+        <label for="r_mode">When should voters see results?</label>
+        <select id="r_mode">
+          <option value="ON_CLOSE" ${sel.resultMode === 'ON_CLOSE' ? 'selected' : ''}>When the election closes</option>
+          <option value="LIVE" ${sel.resultMode === 'LIVE' ? 'selected' : ''}>Live, while voting is open</option>
+          <option value="SCHEDULED" ${sel.resultMode === 'SCHEDULED' ? 'selected' : ''}>At a scheduled date/time</option>
+          <option value="MANUAL" ${sel.resultMode === 'MANUAL' ? 'selected' : ''}>When published manually</option>
+        </select>
+        <div id="r_pubWrap" ${sel.resultMode !== 'SCHEDULED' ? 'hidden' : ''} style="margin-top:10px;">
+          <label for="r_pub">Publish at</label>
+          <input id="r_pub" type="datetime-local" value="${sel.resultsPublishAt ? localInput(sel.resultsPublishAt) : ''}">
+        </div>
+        <button class="btn small" style="margin-top:12px;">Update Result Setting</button>
+      </form>
+    </div>`;
   $('#r_mode').onchange = () => { $('#r_pubWrap').hidden = $('#r_mode').value !== 'SCHEDULED'; };
-  await draw();
-  timer = setInterval(() => draw().catch(() => {}), 8000);
 }
 
 async function tabAnnouncements() {
-  const list = await api(`/admin/announcements`);
-  const forThis = list.filter(a => a.electionId === sel.id || (isFullAdmin && a.electionId === null));
-  $('#tabBody').innerHTML = (forThis.length
-    ? `<div class="scroll"><table><thead><tr><th>Message</th><th>Scope</th><th>Status</th><th>When</th><th></th></tr></thead><tbody>${forThis.map(a =>
-        `<tr><td>${esc(a.message)}</td><td>${a.electionId ? 'This election' : 'Global'}</td>
-         <td>${a.publishedAt ? '<span class="tag open">Published</span>' : '<span class="tag soon">Scheduled</span>'}</td>
-         <td>${a.publishedAt ? esc(fmt(a.publishedAt)) : (a.scheduledAt ? 'At ' + esc(fmt(a.scheduledAt)) : '')}</td>
-         <td>${(!a.publishedAt && (isFullAdmin || a.electionId === sel.id)) ? `<button class="btn plain small" data-act="publishAnn" data-id="${a.id}">Publish now</button>` : ''}
-         ${(isFullAdmin || a.electionId === sel.id) ? `<button class="btn danger small" data-act="delAnn" data-id="${a.id}">Delete</button>` : ''}</td></tr>`).join('')}
-      </tbody></table></div>`
-    : '<p class="empty">No announcements yet.</p>')
-  + `<h3>Post an announcement</h3>
-    <form data-form="announcement">
-      <label for="ann_msg">Message</label><textarea id="ann_msg" maxlength="2000" required placeholder="Important election notice, instructions, or updates..."></textarea>
+  let anns = [];
+  try {
+    const all = await api('/admin/announcements');
+    anns = all.filter(a => a.electionId === sel.id || a.electionId == null);
+  } catch(e) {
+    try {
+      anns = await api(`/public/elections/${sel.id}/announcements`);
+    } catch(_) { anns = []; }
+  }
+  $('#tabBody').innerHTML = `
+    <form data-form="announcement" style="background:var(--faint);padding:20px;border-radius:12px;border:1px solid var(--vh-border);margin-bottom:20px;">
+      <h3 style="margin-top:0;">Post Announcement</h3>
+      <label for="ann_msg">Announcement Message</label>
+      <textarea id="ann_msg" required maxlength="1000" placeholder="Important voting reminders or election announcements..."></textarea>
       <label for="ann_scope">Scope</label>
       <select id="ann_scope">
         <option value="election">This election only</option>
-        ${isFullAdmin ? '<option value="global">All voters (global)</option>' : ''}
+        ${isFullAdmin ? '<option value="global">All active elections (Global)</option>' : ''}
       </select>
-      <label for="ann_sched">Schedule for (leave blank to publish immediately)</label>
+      <label for="ann_sched">Schedule For (optional)</label>
       <input id="ann_sched" type="datetime-local">
-      <button class="btn">Post announcement</button>
-    </form>`;
+      <p class="hint">Leave empty to broadcast immediately.</p>
+      <button class="btn">Broadcast Announcement</button>
+    </form>
+    <h3>Previous Announcements</h3>
+    ${anns.length ? `<table><thead><tr><th>Message</th><th>Target</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>${anns.map(a => `<tr>
+         <td>${esc(a.message)}</td><td>${a.electionId ? 'Election #' + a.electionId : 'Global'}</td>
+         <td>${esc(fmt(a.scheduledAt || a.publishedAt || a.createdAt))}</td>
+         <td><span class="tag ${a.publishedAt ? 'ok' : 'soon'}">${a.publishedAt ? 'Published' : 'Scheduled'}</span></td>
+         <td>${(!a.publishedAt && (isFullAdmin || a.electionId === sel.id)) ? `<button class="btn plain small" data-act="publishAnn" data-id="${a.id}">Publish Now</button>` : ''}
+         ${(isFullAdmin || a.electionId === sel.id) ? `<button class="btn danger small" data-act="delAnn" data-id="${a.id}">Delete</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">No announcements posted for this election yet.</p>'}`;
 }
 
 async function tabApplications() {
-  const list = await api(`/admin/elections/${sel.id}/applications`);
-  $('#tabBody').innerHTML = list.length
-    ? `<div class="scroll"><table><thead><tr><th>Photo</th><th>Name</th><th>Email</th><th>Manifesto</th><th>Status</th><th>Applied</th><th></th></tr></thead><tbody>${list.map(a =>
-        `<tr><td>${a.photoUrl ? `<img class="thumb" src="${esc(a.photoUrl)}" alt="Photo of ${esc(a.name)}">` : '<span class="thumb none" aria-hidden="true"></span>'}</td>
-         <td>${esc(a.name)}</td><td>${esc(a.applicantEmail)}</td>
-         <td>${a.manifesto ? `<button type="button" class="manifesto-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'Hide ▲':'Read ▼'">Read ▼</button><span class="manifesto-text">${esc(a.manifesto)}</span>` : '<span class="meta">—</span>'}</td>
-         <td><span class="badge ${a.status.toLowerCase()}">${a.status}</span></td>
-         <td>${esc(fmt(a.appliedAt))}</td>
-         <td>${a.status === 'PENDING' ? `<button class="btn plain small" data-act="approveApp" data-id="${a.id}">Approve</button>
-           <button class="btn danger small" data-act="rejectApp" data-id="${a.id}">Reject</button>` : ''}</td></tr>`).join('')}
-      </tbody></table></div>`
-    : '<p class="empty">No candidacy applications for this election yet.</p>';
+  let apps = [];
+  try {
+    apps = await api(`/admin/elections/${sel.id}/applications`);
+  } catch(e) {
+    $('#tabBody').innerHTML = `<p class="msg err">${esc(e.message)}</p>`;
+    return;
+  }
+  $('#tabBody').innerHTML = `<h3>Candidate Nominations &amp; Applications</h3>
+    ${apps.length ? `<table><thead><tr><th>Applicant Name</th><th>Email</th><th>Manifesto</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>${apps.map(a => `<tr>
+         <td><strong>${esc((a.name && a.name.trim()) || a.applicantEmail?.split('@')[0] || 'Applicant')}</strong></td>
+         <td>${esc(a.applicantEmail || '—')}</td>
+         <td>${a.manifesto ? `<button type="button" class="btn link small" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'Hide ▲':'View Manifesto ▼'">View Manifesto ▼</button><div class="manifesto-text">${esc(a.manifesto)}</div>` : '<span class="meta">—</span>'}</td>
+         <td><span class="badge ${String(a.status || 'pending').toLowerCase()}">${esc(a.status)}</span></td>
+         <td>${esc(fmt(a.appliedAt || a.submittedAt) || 'Recently')}</td>
+         <td>${a.status === 'PENDING' ? `<button class="btn small" data-act="approveApp" data-id="${a.id}">Approve</button>
+           <button class="btn danger small" data-act="rejectApp" data-id="${a.id}">Reject</button>` : ''}</td></tr>`).join('')}</tbody></table>` : '<p class="empty">No student candidacy applications received for this election yet.</p>'}`;
 }
 
 async function tabSettings() {
-  const upcoming = sel.status === 'UPCOMING';
-  $('#tabBody').innerHTML = `${upcoming ? `<form data-form="edit"><label for="e_title">Title</label><input id="e_title" type="text" required maxlength="200" value="${esc(sel.title)}">
-    <label for="e_desc">Description</label><textarea id="e_desc" maxlength="2000">${esc(sel.description || '')}</textarea>
-    <label for="e_start">Voting opens</label><input id="e_start" type="datetime-local" required value="${localInput(sel.startTime)}">
-    <label for="e_end">Voting closes</label><input id="e_end" type="datetime-local" required value="${localInput(sel.endTime)}">
-
-    <label style="margin-top:16px;font-weight:bold">How should voters be authorized?</label>
-    <div style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:12px;margin:8px 0 16px 0">
-      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:12px;font-weight:normal">
-        <input type="radio" name="e_eligibility" value="domain" ${!sel.restrictToEligibleList ? 'checked' : ''} style="margin-top:4px">
-        <div>
-          <strong>Option 1: Vote by College Mail ID Domain</strong>
-          <div class="hint" style="margin:2px 0 0 0">Anyone with an allowed college email address can vote directly. No CSV voter list required.</div>
+  const isVoterList = sel.restrictToEligibleList;
+  $('#tabBody').innerHTML = `
+    <!-- Cover Photo Card -->
+    <div class="vh-card" style="background:var(--faint);margin-bottom:20px;">
+      <h3 style="margin-top:0;">Election Cover Photo</h3>
+      <p class="hint" style="margin-bottom:12px;">This cover image is shown to students on their ballot and election dashboard cards.</p>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px;">
+        <div style="width:160px;height:80px;border-radius:10px;background:var(--paper);background-image:url('${esc(sel.coverUrl || '')}');background-size:cover;background-position:center;border:1.5px solid var(--vh-border);display:grid;place-items:center;overflow:hidden;">
+          ${!sel.coverUrl ? '<span style="font-size:11px;color:var(--muted);font-weight:600;">Default Campus Cover</span>' : ''}
         </div>
-      </label>
-      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0;font-weight:normal">
-        <input type="radio" name="e_eligibility" value="voterlist" ${sel.restrictToEligibleList ? 'checked' : ''} style="margin-top:4px">
-        <div>
-          <strong>Option 2: Vote by Voter List (CSV)</strong>
-          <div class="hint" style="margin:2px 0 0 0">Only students specifically uploaded in a CSV file can vote.</div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <label class="btn plain small filebtn">Upload Cover Image
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-cover="${sel.id}" hidden>
+          </label>
+          ${sel.coverUrl ? '<button type="button" class="btn danger small" data-act="delCover">Remove Cover</button>' : ''}
         </div>
-      </label>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <input id="coverUrlInput" type="url" placeholder="Or paste image URL (e.g. Unsplash URL)..." value="${esc(sel.coverUrl || '')}" style="margin:0;max-width:380px;">
+        <button type="button" class="btn plain small" data-act="setCoverUrl">Save URL</button>
+      </div>
     </div>
 
-    <label for="e_domains">Allowed college mail ID domain(s)</label>
-    <input id="e_domains" type="text" maxlength="1000" value="${esc(sel.allowedDomains || '')}" placeholder="e.g. student.annauniv.edu">
-    <p class="hint">Comma-separated domains (without leading @). Leave blank to use the default college domain.</p>
-    <button class="btn" style="margin-top:16px">Save changes</button></form>` : '<p class="meta">Details can only be edited before voting starts.</p>'}
-    <h3>Close${isFullAdmin ? ' or delete' : ''}</h3><div class="row">
-    ${sel.status !== 'CLOSED' ? '<button class="btn plain" data-act="close">Close voting now</button>' : ''}
-    ${isFullAdmin ? '<button class="btn danger" data-act="deleteElection">Delete this election</button>' : ''}</div>
-    ${isFullAdmin ? '<p class="hint">Deleting an election permanently removes its candidates, votes, announcements, and applications.</p>' : ''}`;
+    <div class="vh-card" style="background:var(--faint);">
+      <h3 style="margin-top:0;">Edit Election Details</h3>
+      <form data-form="edit">
+        <label for="e_title">Title</label><input id="e_title" type="text" required maxlength="200" value="${esc(sel.title)}">
+        <label for="e_desc">Description (optional)</label><textarea id="e_desc" maxlength="2000">${esc(sel.description || '')}</textarea>
+        <div class="row" style="gap:16px;">
+          <div style="flex:1;min-width:220px;"><label for="e_start">Voting opens</label><input id="e_start" type="datetime-local" required value="${localInput(sel.startTime)}"></div>
+          <div style="flex:1;min-width:220px;"><label for="e_end">Voting closes</label><input id="e_end" type="datetime-local" required value="${localInput(sel.endTime)}"></div>
+        </div>
+        <label style="margin-top:16px;font-weight:700">Voter Eligibility Method</label>
+        <div style="background:var(--paper);border:1.5px solid var(--vh-border);border-radius:10px;padding:14px;margin:8px 0 16px 0;">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:10px;font-weight:normal">
+            <input type="radio" name="e_eligibility" value="domain" ${!isVoterList ? 'checked' : ''} style="margin-top:4px">
+            <div><strong>Option 1: Vote by College Email Domain</strong><div class="hint" style="margin:2px 0 0 0">Anyone with an allowed college email address can vote directly.</div></div>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin:0;font-weight:normal">
+            <input type="radio" name="e_eligibility" value="voterlist" ${isVoterList ? 'checked' : ''} style="margin-top:4px">
+            <div><strong>Option 2: Vote by Voter List (CSV)</strong><div class="hint" style="margin:2px 0 0 0">Only students specifically uploaded in the voter list can vote.</div></div>
+          </label>
+        </div>
+        <div id="e_domainsWrap">
+          <label for="e_domains">Allowed college email domain(s)</label>
+          <input id="e_domains" type="text" maxlength="1000" placeholder="e.g. student.annauniv.edu" value="${esc(sel.allowedDomains || '')}">
+        </div>
+        <button class="btn" style="margin-top:12px;">Save Changes</button>
+      </form>
+    </div>
+    <div style="margin-top:24px;display:flex;gap:12px;align-items:center;">
+      ${sel.status !== 'CLOSED' ? '<button class="btn plain" data-act="close">Close voting now</button>' : ''}
+      ${isFullAdmin ? '<button class="btn danger" data-act="deleteElection">Delete this election</button>' : ''}
+    </div>`;
 }
 
 // ---------- actions and forms ----------
 const actions = {
-  tab: (t) => { tab = t.dataset.tab; renderManage(); },
+  tab: (t) => { if ($('#msg')) $('#msg').innerHTML = ''; tab = t.dataset.tab; renderManage(); },
   kind: (t) => { vs = { kind: t.dataset.kind, q: '', page: 0 }; document.querySelectorAll('#tabBody .tabs a').forEach((a) => a.classList.toggle('on', a === t)); return rows(); },
   page: (t) => { vs.page = Math.max(0, vs.page + Number(t.dataset.d)); return rows(); },
   delPhoto: async (t) => { if (!confirm('Remove this photo?')) return; await api(`/admin/candidates/${t.dataset.id}/photo`, { method: 'DELETE' }); say('Photo removed.'); await tabCandidates(); loadAudit(); },
@@ -355,6 +601,30 @@ const actions = {
   delVoter: async (t) => { if (!confirm('Remove ' + t.dataset.email + ' from the voter list?')) return; await api(`/admin/elections/${sel.id}/voters/${encodeURIComponent(t.dataset.email)}`, { method: 'DELETE' }); say('Voter removed.'); await rows(); loadAudit(); },
   export: async (t) => { await download(`/admin/elections/${sel.id}/voters/export?type=${t.dataset.type}`, `election-${sel.id}-${t.dataset.type}.csv`); loadAudit(); },
   'export-results': async () => { await download(`/admin/elections/${sel.id}/results/export`, `election-${sel.id}-results.csv`); loadAudit(); },
+  'announce-winner': async () => {
+    if (!confirm('Broadcast the official winner announcement to all voters?')) return;
+    try {
+      const a = await api(`/admin/elections/${sel.id}/announce-winner`, { method: 'POST' });
+      say('Winner announced: ' + a.message);
+      loadAudit();
+    } catch(err) { say('Could not announce: ' + err.message); }
+  },
+  delCover: async () => {
+    if (!confirm('Remove cover image for this election?')) return;
+    sel = await api(`/admin/elections/${sel.id}/cover`, { method: 'DELETE' });
+    say('Cover removed.');
+    await tabSettings();
+    loadAudit();
+  },
+  setCoverUrl: async () => {
+    const url = $('#coverUrlInput').value.trim();
+    sel = await api(`/admin/elections/${sel.id}/cover-url`, { method: 'PUT', body: {
+      coverUrl: url || null
+    }});
+    say('Cover URL updated successfully!');
+    await tabSettings();
+    loadAudit();
+  },
   publish: async () => { if (!confirm('Publish results to all voters now?')) return; await api(`/admin/elections/${sel.id}/publish-results`, { method: 'POST' }); say('Results published.'); await reload(); },
   close: async () => { if (!confirm('Close voting now? This cannot be undone.')) return; await api(`/admin/elections/${sel.id}/close`, { method: 'PUT' }); say('Voting closed.'); await reload(); },
   deleteElection: async () => { if (!confirm('Delete this election and all its candidates, votes, announcements and applications?')) return; await api(`/admin/elections/${sel.id}`, { method: 'DELETE' }); say('Election deleted.'); sel = null; await reload(); },
@@ -378,7 +648,7 @@ const actions = {
     $('#assignSubtitle').textContent = 'Select which elections this co-admin is authorized to manage:';
     $('#assignList').innerHTML = elections.length
       ? elections.map(e => `
-          <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;cursor:pointer;background:var(--sheet-alt, #f9f9f9);border:1px solid var(--border, #eee)">
+          <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;cursor:pointer;background:var(--faint);border:1px solid var(--vh-border)">
             <input type="checkbox" name="assignElection" value="${e.id}" ${assigned.includes(e.id) ? 'checked' : ''} style="margin:0">
             <span style="flex:1"><strong>${esc(e.title)}</strong> ${statusTag(e.status)}</span>
           </label>
@@ -387,6 +657,7 @@ const actions = {
     $('#assignDialog').showModal();
   },
 };
+
 const forms = {
   cand: async () => {
     const file = $('#c_photo').files[0];
@@ -420,38 +691,59 @@ const forms = {
       startTime: iso($('#e_start').value), endTime: iso($('#e_end').value),
       resultMode: sel.resultMode, resultsPublishAt: sel.resultsPublishAt,
       restrictToEligibleList: isVoterList,
-      allowedDomains: $('#e_domains').value.trim() || null } });
+      allowedDomains: $('#e_domains').value.trim() || null,
+      coverUrl: ($('#coverUrlInput') && $('#coverUrlInput').value.trim()) || sel.coverUrl || null } });
     say('Changes saved.'); await reload();
   },
   announcement: async () => {
-    const scope = $('#ann_scope').value;
-    const sched = $('#ann_sched').value;
+    const scope = $('#ann_scope') ? $('#ann_scope').value : 'election';
+    const sched = $('#ann_sched') ? $('#ann_sched').value : '';
+    const msg = $('#ann_msg').value.trim();
+    if (!msg) { say('Please write an announcement message.', 'err'); return; }
     await api('/admin/announcements', { method: 'POST', body: {
-      message: $('#ann_msg').value,
-      electionId: scope === 'election' ? sel.id : null,
+      message: msg,
+      electionId: scope === 'election' ? Number(sel.id) : null,
       scheduledAt: sched ? iso(sched) : null
     }});
-    say('Announcement posted.');
+    say('Announcement posted successfully!');
+    $('#ann_msg').value = '';
+    if ($('#ann_sched')) $('#ann_sched').value = '';
     await tabAnnouncements(); loadAudit();
   },
 };
+
 $('#manage').addEventListener('click', (ev) => { const t = ev.target.closest('[data-act]'); if (!t) return; ev.preventDefault(); run(() => actions[t.dataset.act](t)); });
 $('#manage').addEventListener('change', (ev) => {
-  const input = ev.target.closest('[data-photo]'); if (!input || !input.files[0]) return;
-  run(async () => {
-    const f = input.files[0]; checkPhoto(f);
-    await uploadPhoto(input.dataset.photo, f); say('Photo saved.'); await tabCandidates(); loadAudit();
-  });
+  const photoInput = ev.target.closest('[data-photo]');
+  if (photoInput && photoInput.files[0]) {
+    run(async () => {
+      const f = photoInput.files[0]; checkPhoto(f);
+      await uploadPhoto(photoInput.dataset.photo, f); say('Photo saved.'); await tabCandidates(); loadAudit();
+    });
+    return;
+  }
+  const coverInput = ev.target.closest('[data-cover]');
+  if (coverInput && coverInput.files[0]) {
+    run(async () => {
+      const f = coverInput.files[0]; checkPhoto(f);
+      const fd = new FormData(); fd.append('file', f);
+      say('Uploading cover image...');
+      sel = await api(`/admin/elections/${sel.id}/cover`, { method: 'POST', body: fd });
+      say('Cover photo uploaded successfully!');
+      await tabSettings(); loadAudit();
+    });
+    return;
+  }
 });
-$('#manage').addEventListener('submit', (ev) => { ev.preventDefault(); run(() => forms[ev.target.dataset.form]()); });
+$('#manage').addEventListener('submit', (ev) => { const f = ev.target.closest('[data-form]'); if (!f) return; ev.preventDefault(); run(forms[f.dataset.form]); });
 
 async function loadAudit() {
   if (!isFullAdmin) return;
   try {
     const d = await api('/admin/audit-logs?size=15');
     $('#audit').innerHTML = d.items.length
-      ? `<table><thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Details</th></tr></thead><tbody>${d.items.map((a) => `<tr><td>${esc(fmt(a.createdAt))}</td><td>${esc(a.adminEmail)}</td><td>${esc(a.action)}</td><td>${esc(a.details)}</td></tr>`).join('')}</tbody></table>`
-      : '<p class="empty">Nothing has been recorded yet.</p>';
+      ? `<table><thead><tr><th>Timestamp</th><th>Admin</th><th>Action</th><th>Details</th></tr></thead><tbody>${d.items.map((a) => `<tr><td>${esc(fmt(a.createdAt))}</td><td>${esc(a.adminEmail)}</td><td><span class="tag ok">${esc(a.action)}</span></td><td>${esc(a.details)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="empty">No audit logs recorded yet.</p>';
   } catch (_) {}
 }
 
@@ -461,24 +753,24 @@ async function loadCoAdmins() {
     const list = await api('/admin/admins');
     const coAdmins = list.filter(u => u.role === 'CO_ADMIN');
     $('#coadminList').innerHTML = coAdmins.length
-      ? `<div class="scroll"><table><thead><tr><th>Email</th><th>Name</th><th>Assigned Elections</th><th>Actions</th></tr></thead><tbody>${coAdmins.map(u => {
+      ? `<table><thead><tr><th>Email</th><th>Name</th><th>Assigned Elections</th><th>Actions</th></tr></thead><tbody>${coAdmins.map(u => {
           const assignedBadges = (u.assignedElectionIds && u.assignedElectionIds.length)
             ? u.assignedElectionIds.map(eid => {
-                const el = elections.find(e => e.id === eid);
+                const el = elections.find(e => Number(e.id) === Number(eid));
                 return el ? `<span class="tag ok" style="margin:2px">${esc(el.title)}</span>` : `<span class="tag" style="margin:2px">#${eid}</span>`;
               }).join(' ')
             : '<span class="meta">None (no access)</span>';
           return `<tr>
-            <td>${esc(u.email)}</td>
+            <td><strong>${esc(u.email)}</strong></td>
             <td>${esc(u.name || '—')}</td>
             <td>${assignedBadges}</td>
-            <td style="white-space:nowrap">
+            <td>
               <button class="btn plain small" data-act="assign" data-id="${u.id}" data-email="${esc(u.email)}" data-assigned="${(u.assignedElectionIds || []).join(',')}">Assign elections</button>
               <button class="btn danger small" data-act="demote" data-id="${u.id}">Remove</button>
             </td>
           </tr>`;
-        }).join('')}</tbody></table></div>`
-      : '<p class="empty">No co-admins added yet.</p>';
+        }).join('')}</tbody></table>`
+      : '<p class="empty">No co-admins added yet. Add one below.</p>';
   } catch(_) {}
 }
 
@@ -488,17 +780,14 @@ $('#promoteForm').addEventListener('submit', (ev) => {
     const email = $('#promote_email').value.trim();
     const name = $('#promote_name').value.trim();
     await api('/admin/admins/promote', { method: 'POST', body: { email, name } });
-    say(`Co-admin ${email} added. Now click "Assign elections" to grant them access.`);
-    $('#promote_email').value = '';
-    $('#promote_name').value = '';
+    say('Co-admin added successfully.');
+    ev.target.reset();
     await loadCoAdmins();
     loadAudit();
   });
 });
 
-$('#assignCancel').addEventListener('click', () => {
-  $('#assignDialog').close();
-});
+$('#assignCancel').addEventListener('click', () => { $('#assignDialog').close(); });
 $('#assignSave').addEventListener('click', () => {
   run(async () => {
     const checked = Array.from(document.querySelectorAll('input[name="assignElection"]:checked')).map(cb => Number(cb.value));
@@ -520,9 +809,9 @@ document.body.addEventListener('click', (ev) => {
 });
 
 if (!isFullAdmin) {
-  const cd = $('#createElectionDetails'); if (cd) cd.hidden = true;
-  const ca = $('#coadmins'); if (ca) ca.hidden = true;
-  const as = $('#auditSection'); if (as) as.hidden = true;
+  const nc = $('#navCreateElection'); if (nc) nc.style.display = 'none';
+  const ca = $('#navCoadmins'); if (ca) ca.style.display = 'none';
+  const as = $('#navAudit'); if (as) as.style.display = 'none';
 }
 
 run(async () => {

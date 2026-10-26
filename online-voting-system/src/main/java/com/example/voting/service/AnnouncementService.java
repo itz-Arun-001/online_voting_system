@@ -53,7 +53,7 @@ public class AnnouncementService {
         Announcement a = new Announcement();
         a.setMessage(r.message().trim());
         a.setElectionId(r.electionId());
-        a.setCreatedBy(admin.id());
+        a.setCreatedBy(admin.id() != null ? admin.id() : 1L);
         if (r.scheduledAt() != null) {
             a.setScheduledAt(r.scheduledAt());
         } else {

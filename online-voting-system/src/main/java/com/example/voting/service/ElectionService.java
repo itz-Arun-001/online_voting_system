@@ -6,12 +6,15 @@ import com.example.voting.entity.Candidate;
 import com.example.voting.entity.CandidatePhoto;
 import com.example.voting.entity.Election;
 import com.example.voting.entity.ElectionCoAdmin;
+import com.example.voting.entity.ElectionCover;
+import com.example.voting.entity.Announcement;
 import com.example.voting.enums.ElectionStatus;
 import com.example.voting.enums.ResultMode;
 import com.example.voting.exception.ApiException;
 import com.example.voting.repository.CandidatePhotoRepository;
 import com.example.voting.repository.CandidateRepository;
 import com.example.voting.repository.ElectionCoAdminRepository;
+import com.example.voting.repository.ElectionCoverRepository;
 import com.example.voting.repository.ElectionRepository;
 import com.example.voting.repository.EligibleVoterRepository;
 import com.example.voting.repository.VoteRepository;
@@ -37,6 +40,7 @@ public class ElectionService {
     private final ElectionRepository elections;
     private final CandidateRepository candidates;
     private final CandidatePhotoRepository photos;
+    private final ElectionCoverRepository covers;
     private final EligibleVoterRepository eligible;
     private final VoteRepository votes;
     private final ElectionCoAdminRepository electionCoAdmins;
@@ -151,9 +155,38 @@ public class ElectionService {
     }
 
     public ElectionView toView(Election e, Boolean hasVoted) {
+        String winnerName = null;
+        Long winnerVotes = null;
+        if (canViewResults(e) && currentStatus(e) == ElectionStatus.CLOSED) {
+            List<Object[]> counts = votes.countByCandidate(e.getId());
+            if (!counts.isEmpty()) {
+                long maxVotes = -1;
+                Long topCandId = null;
+                boolean tie = false;
+                for (Object[] row : counts) {
+                    long cVotes = ((Number) row[1]).longValue();
+                    if (cVotes > maxVotes) {
+                        maxVotes = cVotes;
+                        topCandId = ((Number) row[0]).longValue();
+                        tie = false;
+                    } else if (cVotes == maxVotes && maxVotes > 0) {
+                        tie = true;
+                    }
+                }
+                if (topCandId != null) {
+                    winnerVotes = Math.max(0, maxVotes);
+                    if (tie) {
+                        winnerName = "Tie for 1st Place";
+                    } else {
+                        winnerName = candidates.findById(topCandId).map(Candidate::getName).orElse("Winner");
+                    }
+                }
+            }
+        }
         return new ElectionView(e.getId(), e.getTitle(), e.getDescription(), e.getStartTime(), e.getEndTime(),
                 currentStatus(e), e.getResultMode(), e.getResultsPublishAt(), e.isResultsPublished(),
-                canViewResults(e), e.isRestrictToEligibleList(), hasVoted, e.getAllowedDomains());
+                canViewResults(e), e.isRestrictToEligibleList(), hasVoted, e.getAllowedDomains(),
+                e.getCoverUrl(), winnerName, winnerVotes);
     }
 
     public List<ElectionView> listFor(AuthUser me) {
@@ -218,6 +251,7 @@ public class ElectionService {
         Election e = get(id);
         votes.deleteByElectionId(id);
         photos.deleteByElectionId(id);
+        covers.deleteById(id);
         candidates.deleteByElectionId(id);
         eligible.deleteByElectionId(id);
         electionCoAdmins.deleteByElectionId(id);
@@ -230,6 +264,7 @@ public class ElectionService {
     public void deleteAllElections() {
         votes.deleteAll();
         photos.deleteAll();
+        covers.deleteAll();
         candidates.deleteAll();
         eligible.deleteAll();
         electionCoAdmins.deleteAll();
@@ -287,6 +322,123 @@ public class ElectionService {
         // Normalise and persist the allowed domains list
         String domains = r.allowedDomains() == null ? null : r.allowedDomains().trim();
         e.setAllowedDomains(domains == null || domains.isBlank() ? null : domains);
+        if (r.coverUrl() != null) {
+            e.setCoverUrl(r.coverUrl().isBlank() ? null : r.coverUrl().trim());
+        }
+    }
+
+    @Transactional
+    public Election save(Election e) {
+        return elections.save(e);
+    }
+
+    @Transactional
+    public Election setCoverPhoto(Long electionId, MultipartFile file) {
+        Election e = get(electionId);
+        if (file == null || file.isEmpty()) throw ApiException.badRequest("Choose an image file.");
+        if (file.getSize() > MAX_PHOTO_BYTES) throw ApiException.badRequest("The image must be 2 MB or smaller.");
+        byte[] data;
+        try {
+            data = file.getBytes();
+        } catch (IOException ex) {
+            throw ApiException.badRequest("Could not read that image.");
+        }
+        String type = imageType(data);
+        if (type == null) throw ApiException.badRequest("Use a JPG, PNG, WebP or GIF image.");
+        ElectionCover c = covers.findById(electionId).orElseGet(ElectionCover::new);
+        c.setElectionId(electionId);
+        c.setContentType(type);
+        c.setData(data);
+        covers.save(c);
+        e.setCoverUrl("/api/public/elections/" + electionId + "/cover?v=" + System.currentTimeMillis());
+        return elections.save(e);
+    }
+
+    @Transactional
+    public Election removeCoverPhoto(Long electionId) {
+        Election e = get(electionId);
+        covers.deleteById(electionId);
+        e.setCoverUrl(null);
+        return elections.save(e);
+    }
+
+    @Transactional
+    public Announcement announceWinner(Long electionId, AuthUser admin) {
+        Election e = get(electionId);
+        requireElectionAccess(electionId, admin);
+        List<Object[]> counts = votes.countByCandidate(electionId);
+        String winnerInfo;
+        if (counts.isEmpty()) {
+            winnerInfo = "Voting for '" + e.getTitle() + "' has concluded. No votes were recorded.";
+        } else {
+            long maxVotes = -1;
+            Long topCandId = null;
+            boolean tie = false;
+            for (Object[] row : counts) {
+                long cVotes = ((Number) row[1]).longValue();
+                if (cVotes > maxVotes) {
+                    maxVotes = cVotes;
+                    topCandId = ((Number) row[0]).longValue();
+                    tie = false;
+                } else if (cVotes == maxVotes && maxVotes > 0) {
+                    tie = true;
+                }
+            }
+            if (tie) {
+                winnerInfo = "🏆 Official Result: The election '" + e.getTitle() + "' has concluded in a tie for 1st place with " + maxVotes + " votes each! Certified results are now published.";
+            } else if (topCandId != null) {
+                String candName = candidates.findById(topCandId).map(Candidate::getName).orElse("Candidate");
+                winnerInfo = "🏆 Official Result: " + candName + " has won the election '" + e.getTitle() + "' with " + maxVotes + " votes! Congratulations to all candidates and student voters.";
+            } else {
+                winnerInfo = "Voting for '" + e.getTitle() + "' has concluded.";
+            }
+        }
+        Announcement a = new Announcement();
+        a.setElectionId(electionId);
+        a.setMessage(winnerInfo);
+        a.setPublishedAt(Instant.now());
+        a.setCreatedBy(admin.id());
+        return announcements.save(a);
+    }
+
+    @Transactional
+    public void autoAnnounceWinnerIfDue(Long electionId) {
+        Election e = get(electionId);
+        boolean alreadyAnnounced = announcements.findVisibleForElection(electionId).stream()
+                .anyMatch(a -> a.getMessage() != null && a.getMessage().contains("Official Result"));
+        if (!alreadyAnnounced) {
+            List<Object[]> counts = votes.countByCandidate(electionId);
+            if (!counts.isEmpty()) {
+                long maxVotes = -1;
+                Long topCandId = null;
+                boolean tie = false;
+                for (Object[] row : counts) {
+                    long cVotes = ((Number) row[1]).longValue();
+                    if (cVotes > maxVotes) {
+                        maxVotes = cVotes;
+                        topCandId = ((Number) row[0]).longValue();
+                        tie = false;
+                    } else if (cVotes == maxVotes && maxVotes > 0) {
+                        tie = true;
+                    }
+                }
+                String winnerInfo;
+                if (tie) {
+                    winnerInfo = "🏆 Official Result: The election '" + e.getTitle() + "' has concluded in a tie for 1st place with " + maxVotes + " votes each! Certified results are now published.";
+                } else if (topCandId != null) {
+                    String candName = candidates.findById(topCandId).map(Candidate::getName).orElse("Candidate");
+                    winnerInfo = "🏆 Official Result: " + candName + " has won the election '" + e.getTitle() + "' with " + maxVotes + " votes! Congratulations to all candidates and student voters.";
+                } else {
+                    return;
+                }
+                Announcement a = new Announcement();
+                a.setElectionId(electionId);
+                a.setMessage(winnerInfo);
+                a.setPublishedAt(Instant.now());
+                a.setCreatedBy(e.getCreatedBy() != null ? e.getCreatedBy() : 1L);
+                announcements.save(a);
+            }
+        }
     }
 
     // ---------- admin: candidates ----------

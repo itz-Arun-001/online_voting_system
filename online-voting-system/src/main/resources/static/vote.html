@@ -3,196 +3,887 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Elections - College Election</title>
+<title>CampusVote — Student Dashboard</title>
+<link rel="icon" type="image/png" href="images/logo.png">
 <link rel="stylesheet" href="css/style.css">
+<style>
+  /* Extra CampusVote Portal specific styles */
+  .vh-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+  .vh-tab-pane { display: none; }
+  .vh-tab-pane.active { display: block; animation: vhFadeIn 0.2s ease-in; }
+  @keyframes vhFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .vh-table-wrap { background: var(--paper); border: 1px solid var(--vh-border); border-radius: 12px; overflow: hidden; }
+  .vh-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+  .vh-table th { background: var(--faint); padding: 12px 18px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--vh-border); }
+  .vh-table td { padding: 14px 18px; border-bottom: 1px solid var(--vh-border); vertical-align: middle; }
+  .vh-table tr:last-child td { border-bottom: none; }
+  .copy-btn { background: var(--faint); border: 1px solid var(--vh-border); border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; color: var(--vh-forest); font-weight: 600; }
+  .copy-btn:hover { background: #dcfce7; }
+  .cover-1 { background-image: linear-gradient(180deg, rgba(20,56,41,0.2), rgba(20,56,41,0.8)), url('https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=600&q=80'); }
+  .cover-2 { background-image: linear-gradient(180deg, rgba(20,56,41,0.2), rgba(20,56,41,0.8)), url('https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=600&q=80'); }
+  .cover-3 { background-image: linear-gradient(180deg, rgba(20,56,41,0.2), rgba(20,56,41,0.8)), url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=600&q=80'); }
+</style>
 </head>
 <body>
-<main class="sheet">
-  <header class="top"><a class="brand" href="/">College Election</a><nav id="nav"></nav></header>
-  <h1>Your elections</h1>
-  <div id="announcements"></div>
-  <div id="msg"></div>
-  <div id="root"><p class="lead">Loading.</p></div>
-</main>
+
+<div class="vh-app">
+  <!-- Left Sidebar Navigation -->
+  <aside class="vh-sidebar" id="sidebar">
+    <a class="vh-brand" href="vote.html">
+      <span class="vh-brand-logo"></span>
+      CampusVote
+    </a>
+
+    <nav class="vh-nav">
+      <button type="button" class="vh-nav-item active" data-tab="dashboard">
+        <span class="vh-nav-icon">🏠</span>
+        Dashboard
+      </button>
+      <button type="button" class="vh-nav-item" data-tab="elections">
+        <span class="vh-nav-icon">🗳️</span>
+        Elections
+      </button>
+      <button type="button" class="vh-nav-item" data-tab="myvotes">
+        <span class="vh-nav-icon">📑</span>
+        My Votes
+      </button>
+      <button type="button" class="vh-nav-item" data-tab="results">
+        <span class="vh-nav-icon">📊</span>
+        Results
+      </button>
+      <button type="button" class="vh-nav-item" data-tab="apply">
+        <span class="vh-nav-icon">📝</span>
+        Candidacy Apply
+      </button>
+      <a href="admin.html" id="adminPortalLink" class="vh-nav-item" style="display:none;margin-top:auto;background:var(--faint);color:var(--vh-forest);">
+        <span class="vh-nav-icon">⚙️</span>
+        Admin Console →
+      </a>
+    </nav>
+
+    <!-- Sidebar User Footer -->
+    <div class="vh-sidebar-footer">
+      <div class="vh-avatar" id="userAvatar">S</div>
+      <div class="vh-user-info">
+        <div class="vh-user-name" id="userEmail">student@college.edu</div>
+        <div class="vh-user-sub" id="userRole">Verified Student</div>
+      </div>
+      <button type="button" class="vh-logout-btn" id="logoutBtn" title="Log Out" style="display:inline-flex;align-items:center;gap:4px;padding:6px 10px;font-size:12px;font-weight:600;width:auto;border-radius:8px;">
+        <span>Log Out</span> 🚪
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="vh-main">
+    <!-- Top Bar -->
+    <header class="vh-header">
+      <div>
+        <h1 class="vh-title" id="pageHeading">Welcome, Student! 👋</h1>
+        <p class="vh-subtitle">Your vote can create real change. Stay informed and participate.</p>
+      </div>
+      <div class="vh-header-actions">
+        <button type="button" class="btn plain small" id="studentHeaderLogoutBtn" style="color:var(--bad,#dc2626);display:inline-flex;align-items:center;gap:6px;font-weight:600;">🚪 Log Out</button>
+        <button type="button" class="vh-bell-btn" id="bellBtn" title="Announcements">
+          🔔
+          <span class="vh-bell-dot" id="bellDot" style="display:none;"></span>
+        </button>
+        <div class="vh-date-badge" id="currentDateBadge">
+          📅 26 Oct 2026
+        </div>
+      </div>
+    </header>
+
+    <!-- Global Announcements Container -->
+    <div id="announcementsSlot"></div>
+    <div id="msg"></div>
+
+    <!-- ──────────────────────────────────────────
+         VIEW 1: DASHBOARD
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane active" id="pane-dashboard">
+      <!-- 4 Top Stat Cards -->
+      <div class="vh-stats-grid">
+        <div class="vh-stat-card">
+          <div class="vh-stat-icon green">🗳️</div>
+          <div>
+            <div class="vh-stat-num" id="statActive">0</div>
+            <div class="vh-stat-label">Active Elections</div>
+          </div>
+        </div>
+        <div class="vh-stat-card">
+          <div class="vh-stat-icon blue">⏳</div>
+          <div>
+            <div class="vh-stat-num" id="statUpcoming">0</div>
+            <div class="vh-stat-label">Upcoming</div>
+          </div>
+        </div>
+        <div class="vh-stat-card">
+          <div class="vh-stat-icon pink">🏁</div>
+          <div>
+            <div class="vh-stat-num" id="statClosed">0</div>
+            <div class="vh-stat-label">Completed</div>
+          </div>
+        </div>
+        <div class="vh-stat-card">
+          <div class="vh-stat-icon purple">✨</div>
+          <div>
+            <div class="vh-stat-num" id="statVoted">0</div>
+            <div class="vh-stat-label">Your Participated Votes</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ongoing Elections Section -->
+      <div class="vh-section-head">
+        <h2 class="vh-section-title">Ongoing Elections</h2>
+        <a href="#" class="vh-link" onclick="switchTab('elections');return false;">View All →</a>
+      </div>
+      <div class="vh-elections-grid" id="ongoingElectionsGrid">
+        <p class="empty">Loading ongoing elections...</p>
+      </div>
+
+      <!-- Upcoming Elections Preview -->
+      <div id="upcomingSection" style="margin-top:28px;display:none;">
+        <div class="vh-section-head">
+          <h2 class="vh-section-title">Upcoming Elections</h2>
+        </div>
+        <div class="vh-elections-grid" id="upcomingElectionsGrid"></div>
+      </div>
+    </section>
+
+    <!-- ──────────────────────────────────────────
+         VIEW 2: ALL ELECTIONS
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane" id="pane-elections">
+      <div class="vh-section-head">
+        <h2 class="vh-section-title">All Campus Elections</h2>
+      </div>
+      <div class="vh-elections-grid" id="allElectionsGrid">
+        <p class="empty">Loading elections...</p>
+      </div>
+    </section>
+
+    <!-- ──────────────────────────────────────────
+         VIEW 3: BALLOT / VOTING VIEW
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane" id="pane-ballot">
+      <button type="button" class="vh-back-btn" onclick="switchTab('dashboard')">
+        ← Back to Dashboard
+      </button>
+
+      <div style="background:var(--paper);border:1px solid var(--vh-border);border-radius:16px;padding:24px;margin-bottom:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px;">
+          <h2 style="font-size:22px;margin:0;color:var(--ink);" id="ballotElectionTitle">Election Title</h2>
+          <span class="vh-pill-badge ongoing" id="ballotStatusBadge">Ongoing</span>
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin:0 0 14px;" id="ballotDates">Voting Period</p>
+        <p style="font-size:14px;color:var(--ink);margin:0 0 16px;" id="ballotDesc"></p>
+
+        <div class="countdown-wrap" id="ballotCountdown" style="display:none;">
+          <span class="meta" style="margin:0 8px 0 0;">Time Remaining:</span>
+          <span class="cdtimer"></span>
+        </div>
+
+        <div id="ballotAnnouncements" style="margin-bottom:16px;display:none;"></div>
+
+        <div class="vh-alert-info">
+          <span>ℹ️</span>
+          <span>Select one candidate from the list below. You can only vote once. Read their manifesto and choose wisely.</span>
+        </div>
+
+        <!-- Candidate Cards Container -->
+        <div class="vh-candidate-list" id="ballotCandidatesList">
+          <p class="empty">Loading candidates...</p>
+        </div>
+
+        <div style="text-align:center;margin-top:20px;">
+          <button type="button" class="vh-submit-vote-btn" id="submitVoteBtn" disabled>
+            🚀 Submit My Vote
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────────────────────────────────────────
+         VIEW 4: MY VOTES
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane" id="pane-myvotes">
+      <div class="vh-section-head">
+        <div>
+          <h2 class="vh-section-title">My Votes</h2>
+          <p style="font-size:13px;color:var(--muted);margin:4px 0 0;">Here is the record of elections you have participated in.</p>
+        </div>
+      </div>
+
+      <div class="vh-table-wrap">
+        <table class="vh-table">
+          <thead>
+            <tr>
+              <th>Election</th>
+              <th>Status</th>
+              <th>Date &amp; Time</th>
+              <th>Anonymity Receipt Token</th>
+            </tr>
+          </thead>
+          <tbody id="myVotesTableBody">
+            <tr><td colspan="4" class="empty">Loading your voting records...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ──────────────────────────────────────────
+         VIEW 5: RESULTS
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane" id="pane-results">
+      <div class="vh-section-head">
+        <div>
+          <h2 class="vh-section-title">Election Results</h2>
+          <p style="font-size:13px;color:var(--muted);margin:4px 0 0;">Live counts and certified election outcomes.</p>
+        </div>
+        <div>
+          <select id="resultsElectionSelect" style="max-width:280px;padding:8px 12px;border-radius:8px;font-size:13px;"></select>
+        </div>
+      </div>
+
+      <div id="resultsChartContainer">
+        <p class="empty">Select an election to view results.</p>
+      </div>
+    </section>
+
+    <!-- ──────────────────────────────────────────
+         VIEW 6: CANDIDACY APPLICATION
+         ────────────────────────────────────────── -->
+    <section class="vh-tab-pane" id="pane-apply">
+      <div class="vh-section-head">
+        <div>
+          <h2 class="vh-section-title">Apply for Candidacy</h2>
+          <p style="font-size:13px;color:var(--muted);margin:4px 0 0;">Submit your candidacy application to contest in an upcoming election.</p>
+        </div>
+      </div>
+
+      <div style="background:var(--paper);border:1px solid var(--vh-border);border-radius:16px;padding:28px;max-width:680px;">
+        <form id="applyCandidateForm">
+          <label for="applyElectionSelect">Select Election</label>
+          <select id="applyElectionSelect" required style="border-radius:8px;margin-bottom:16px;"></select>
+
+          <label for="applyCandidateName">Candidate Full Name</label>
+          <input type="text" id="applyCandidateName" required maxlength="150" placeholder="e.g. Alex Johnson" style="border-radius:8px;margin-bottom:16px;">
+
+          <label for="applyManifesto">Manifesto / Agenda</label>
+          <textarea id="applyManifesto" maxlength="2000" placeholder="Why should fellow students vote for you? Your vision, goals, and promises..." style="border-radius:8px;min-height:120px;margin-bottom:16px;"></textarea>
+
+          <label for="applyPhoto">Profile Photo (optional)</label>
+          <input type="file" id="applyPhoto" accept="image/jpeg,image/png,image/webp,image/gif" style="border-radius:8px;margin-bottom:8px;">
+          <p class="hint" style="margin-bottom:20px;">Supported formats: JPG, PNG, WebP or GIF. Maximum size: 2 MB.</p>
+
+          <button class="vh-submit-vote-btn" style="max-width:240px;margin:0;">Submit Application</button>
+          <div id="applyMsg" style="margin-top:14px;"></div>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ──────────────────────────────────────────
+     MODAL 1: MANIFESTO VIEWER
+     ────────────────────────────────────────── -->
+<div class="vh-modal-backdrop" id="manifestoModal" style="display:none;">
+  <div class="vh-modal">
+    <div class="vh-modal-head">
+      <h3 class="vh-modal-title" id="manifestoModalTitle">Candidate Manifesto</h3>
+      <button type="button" class="vh-modal-close" onclick="closeManifestoModal()">✕</button>
+    </div>
+    <div class="vh-modal-body">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;">
+        <img id="manifestoModalPhoto" class="vh-candidate-avatar" style="width:64px;height:64px;" src="" alt="Candidate">
+        <div>
+          <h4 id="manifestoModalName" style="margin:0 0 4px;font-size:18px;color:var(--ink);">Name</h4>
+          <p id="manifestoModalSlogan" style="margin:0;font-size:13px;color:var(--muted);font-style:italic;">Slogan</p>
+        </div>
+      </div>
+      <div style="background:var(--faint);border:1px solid var(--vh-border);border-radius:10px;padding:16px;font-size:14px;line-height:1.6;color:var(--ink);white-space:pre-wrap;" id="manifestoModalText"></div>
+      <div style="text-align:right;margin-top:20px;">
+        <button type="button" class="btn plain" onclick="closeManifestoModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ──────────────────────────────────────────
+     MODAL 2: VOTE CONFIRMATION
+     ────────────────────────────────────────── -->
+<div class="vh-modal-backdrop" id="confirmVoteModal" style="display:none;">
+  <div class="vh-modal" style="max-width:440px;">
+    <div class="vh-modal-head">
+      <h3 class="vh-modal-title">Confirm Your Vote</h3>
+      <button type="button" class="vh-modal-close" onclick="closeConfirmModal()">✕</button>
+    </div>
+    <div class="vh-modal-body" style="text-align:center;">
+      <p style="font-size:16px;margin:0 0 8px;color:var(--ink);">You are voting for:</p>
+      <div style="font-size:20px;font-weight:700;color:var(--vh-forest);margin-bottom:16px;" id="confirmCandidateName">Candidate Name</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:24px;">Once confirmed, your vote is recorded anonymously. It cannot be altered or re-cast.</p>
+      <div style="display:flex;gap:12px;justify-content:center;">
+        <button type="button" class="btn plain" onclick="closeConfirmModal()">Go Back</button>
+        <button type="button" class="vh-card-action-btn" id="confirmVoteProceedBtn" style="width:auto;padding:10px 24px;">Confirm Vote</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ──────────────────────────────────────────
+     MODAL 3: VOTE SUCCESS WITH ANONYMITY TOKEN
+     ────────────────────────────────────────── -->
+<div class="vh-modal-backdrop" id="successVoteModal" style="display:none;">
+  <div class="vh-modal" style="max-width:480px;">
+    <div class="vh-modal-body">
+      <div class="vh-success-box">
+        <div class="vh-check-circle">✓</div>
+        <h3 style="font-size:22px;font-weight:700;margin:0 0 6px;color:var(--ink);">Vote Submitted Successfully!</h3>
+        <p style="font-size:14px;color:var(--muted);margin:0 0 18px;">Thank you for participating. Your vote has been securely recorded.</p>
+        
+        <div class="vh-receipt-box" id="successReceiptContainer" style="display:none;">
+          <div style="font-weight:700;font-size:13px;color:var(--vh-forest);margin-bottom:4px;">🔒 Cryptographic Anonymity Receipt</div>
+          <div style="font-size:12px;color:var(--muted);">Save this token to verify your vote was counted without revealing your candidate choice:</div>
+          <div class="vh-receipt-token">
+            <span id="successReceiptTokenText">...</span>
+            <button type="button" class="copy-btn" onclick="copyToken('successReceiptTokenText', this)">Copy</button>
+          </div>
+        </div>
+
+        <button type="button" class="vh-submit-vote-btn" onclick="closeSuccessModal()" style="max-width:100%;margin-top:16px;">
+          Back to Dashboard
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="js/app.js"></script>
 <script>
 requireLogin();
 const $ = (s) => document.querySelector(s);
-const root = $('#root');
+const $$ = (s) => document.querySelectorAll(s);
 
-// Load global announcements
+let state = {
+  elections: [],
+  activeBallotElection: null,
+  selectedCandidateId: null,
+  candidateList: []
+};
+
+// Setup user details
+const userEmail = sessionStorage.getItem('email') || 'student@college.edu';
+const userRole = sessionStorage.getItem('role') || 'VOTER';
+$('#userEmail').textContent = userEmail;
+$('#userAvatar').textContent = userEmail.charAt(0).toUpperCase();
+$('#userRole').textContent = (userRole === 'ADMIN' || userRole === 'CO_ADMIN') ? 'Election Administrator' : 'Verified Student';
+if (userRole === 'ADMIN' || userRole === 'CO_ADMIN') {
+  const apl = $('#adminPortalLink');
+  if (apl) apl.style.display = 'flex';
+}
+const studentLogout = () => { sessionStorage.clear(); localStorage.removeItem('token'); location.href = 'index.html'; };
+if ($('#logoutBtn')) $('#logoutBtn').onclick = studentLogout;
+if ($('#studentHeaderLogoutBtn')) $('#studentHeaderLogoutBtn').onclick = studentLogout;
+
+// Set current date badge
+const now = new Date();
+$('#currentDateBadge').textContent = '📅 ' + now.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', weekday: 'short' });
+
+// Tab Switching
+function switchTab(tabName) {
+  if (!tabName) return;
+  $$('.vh-nav-item[data-tab]').forEach(b => b.classList.remove('active'));
+  const btn = $(`[data-tab="${tabName}"]`);
+  if (btn) btn.classList.add('active');
+
+  $$('.vh-tab-pane').forEach(p => p.classList.remove('active'));
+  const targetPane = $(`#pane-${tabName}`);
+  if (targetPane) targetPane.classList.add('active');
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (tabName === 'myvotes') loadMyVotes();
+  if (tabName === 'results') loadResultsView();
+  if (tabName === 'apply') populateApplyElections();
+  if (tabName === 'dashboard' || tabName === 'elections') renderElectionsLists();
+}
+
+$$('.vh-nav-item[data-tab]').forEach(btn => {
+  btn.onclick = (e) => {
+    e.preventDefault();
+    switchTab(btn.dataset.tab);
+  };
+});
+
+// Load Global Announcements (strictly global, not election-specific)
 async function loadAnnouncements() {
   try {
     const list = await api('/public/announcements');
-    if (!list.length) return;
-    const wrap = $('#announcements');
-    wrap.innerHTML = list.map(a => `<div class="announcement-banner">
-      <p>📢 ${esc(a.message)}</p>
-      <p class="ann-time">${esc(fmt(a.publishedAt))}</p>
-    </div>`).join('');
+    if (!list || !list.length) {
+      $('#bellDot').style.display = 'none';
+      $('#announcementsSlot').innerHTML = '';
+      return;
+    }
+    $('#bellDot').style.display = 'block';
+    $('#announcementsSlot').innerHTML = list.map(a => `
+      <div class="announcement-banner">
+        <p>📢 <strong>Global Campus Notice:</strong> ${esc(a.message)}</p>
+        <p class="ann-time">${esc(fmt(a.publishedAt))}</p>
+      </div>
+    `).join('');
   } catch(_) {}
 }
 
-function resultsLine(e) {
-  return e.resultsVisible
-    ? `<p><a href="results.html?id=${e.id}">View results →</a></p>`
-    : '<p class="meta">Results are not available yet.</p>';
-}
+$('#bellBtn').onclick = () => {
+  const slot = $('#announcementsSlot');
+  if (slot.innerHTML.trim() === '') loadAnnouncements();
+  slot.scrollIntoView({ behavior: 'smooth' });
+};
 
-async function renderElection(e) {
-  const sec = document.createElement('section');
-  sec.className = 'election';
-  let body = '';
+// Format election card HTML
+function createElectionCard(e, index) {
+  const coverClasses = ['cover-1', 'cover-2', 'cover-3'];
+  const coverClass = coverClasses[index % coverClasses.length];
+  const coverStyle = e.coverUrl ? `style="background-image: url('${esc(e.coverUrl)}'); background-size: cover; background-position: center;"` : '';
+  
+  let badgeClass = 'ongoing';
+  let badgeText = 'Ongoing';
+  if (e.status === 'UPCOMING') { badgeClass = 'upcoming'; badgeText = 'Upcoming'; }
+  else if (e.status === 'CLOSED') { badgeClass = 'closed'; badgeText = 'Closed'; }
 
-  if (e.status === 'UPCOMING') {
-    body = `<p>Voting opens ${esc(fmt(e.startTime))}.</p>`;
-  } else if (e.hasVoted) {
-    let when = '';
-    let receipt = '';
-    try {
-      const s = await api(`/elections/${e.id}/my-status`);
-      when = s.votedAt ? ` on ${fmt(s.votedAt)}` : '';
-      if (s.receiptToken) {
-        receipt = `<div class="receipt">
-          🔒 <strong>Anonymity Receipt</strong> — your vote is recorded anonymously. Nobody can link this token back to your identity.
-          <code>${esc(s.receiptToken)}</code>
-        </div>`;
-      }
-    } catch (_) {}
-    body = `<p class="msg ok">✅ Your vote has been recorded${esc(when)}. You cannot change it, and nobody can see who you chose.</p>${receipt}`;
+  let actionButton = '';
+  if (e.status === 'ACTIVE') {
+    if (e.hasVoted) {
+      actionButton = `<button type="button" class="vh-card-action-btn secondary" onclick="viewReceiptDirect(${e.id})">✅ Voted (View Receipt)</button>`;
+    } else {
+      actionButton = `<button type="button" class="vh-card-action-btn" onclick="openBallot(${e.id})">View &amp; Vote →</button>`;
+    }
+  } else if (e.status === 'UPCOMING') {
+    actionButton = `<button type="button" class="vh-card-action-btn secondary" disabled>Opens ${esc(fmt(e.startTime))}</button>`;
   } else if (e.status === 'CLOSED') {
-    body = `<p>Voting closed ${esc(fmt(e.endTime))}. You did not vote in this election.</p>`;
-  } else {
-    // ACTIVE — show countdown + ballot
-    body = `<div class="countdown-wrap"><span class="meta">Time remaining: </span><span class="cdtimer"></span></div><div class="ballot-slot"></div>`;
+    if (e.resultsVisible) {
+      actionButton = `<button type="button" class="vh-card-action-btn secondary" onclick="viewElectionResults(${e.id})">View Results 📊</button>`;
+    } else {
+      actionButton = `<button type="button" class="vh-card-action-btn secondary" disabled>Voting Closed</button>`;
+    }
   }
 
+  const winnerBadge = e.winnerName ? `
+    <div class="vh-winner-card-badge">
+      <span>🏆</span>
+      <span>Winner: <strong>${esc(e.winnerName)}</strong>${e.winnerVotes != null ? ` (${e.winnerVotes} votes)` : ''}</span>
+    </div>
+  ` : '';
+
+  return `
+    <div class="vh-election-card" style="cursor:pointer;" onclick="handleCardClick(event, ${e.id}, '${e.status}', ${e.hasVoted ? 'true' : 'false'}, ${e.resultsVisible ? 'true' : 'false'})">
+      <div class="vh-card-banner ${coverClass}" ${coverStyle}>
+        <span class="vh-pill-badge ${badgeClass}">${badgeText}</span>
+      </div>
+      <div class="vh-card-body">
+        <h3 class="vh-card-title">${esc(e.title)}</h3>
+        <p class="vh-card-desc">${esc(e.description || 'Cast your ballot for student leadership and association representatives.')}</p>
+        ${winnerBadge}
+        <div class="vh-card-meta">
+          <div class="vh-meta-item">
+            <span>📅</span>
+            <span>${esc(fmt(e.startTime))} - ${esc(fmt(e.endTime))}</span>
+          </div>
+          <div class="vh-meta-item">
+            <span>👥</span>
+            <span>Official Election Ballot</span>
+          </div>
+        </div>
+        ${actionButton}
+      </div>
+    </div>
+  `;
+}
+
+function handleCardClick(ev, electionId, status, hasVoted, resultsVisible) {
+  if (ev.target.closest('button') || ev.target.closest('a')) return;
+  if (status === 'ACTIVE' && !hasVoted) {
+    openBallot(electionId);
+  } else if (hasVoted) {
+    viewReceiptDirect(electionId);
+  } else if (status === 'CLOSED' && resultsVisible) {
+    viewElectionResults(electionId);
+  }
+}
+
+// Render Dashboard & Elections lists
+function renderElectionsLists() {
+  const ongoing = state.elections.filter(e => e.status === 'ACTIVE');
+  const upcoming = state.elections.filter(e => e.status === 'UPCOMING');
+  const closed = state.elections.filter(e => e.status === 'CLOSED');
+  const voted = state.elections.filter(e => e.hasVoted);
+
+  // Update top metrics
+  $('#statActive').textContent = ongoing.length;
+  $('#statUpcoming').textContent = upcoming.length;
+  $('#statClosed').textContent = closed.length;
+  $('#statVoted').textContent = voted.length;
+
+  // Ongoing grid
+  if (ongoing.length > 0) {
+    $('#ongoingElectionsGrid').innerHTML = ongoing.map((e, i) => createElectionCard(e, i)).join('');
+  } else {
+    $('#ongoingElectionsGrid').innerHTML = '<p class="empty">No active elections right now. Check upcoming elections or announcements.</p>';
+  }
+
+  // Upcoming section
+  if (upcoming.length > 0) {
+    $('#upcomingSection').style.display = 'block';
+    $('#upcomingElectionsGrid').innerHTML = upcoming.map((e, i) => createElectionCard(e, i)).join('');
+  } else {
+    $('#upcomingSection').style.display = 'none';
+  }
+
+  // All Elections grid
+  if (state.elections.length > 0) {
+    $('#allElectionsGrid').innerHTML = state.elections.map((e, i) => createElectionCard(e, i)).join('');
+  } else {
+    $('#allElectionsGrid').innerHTML = '<p class="empty">No elections found for your account.</p>';
+  }
+}
+
+// Open Ballot for an Election
+async function openBallot(electionId) {
+  const election = state.elections.find(e => Number(e.id) === Number(electionId));
+  if (!election) return;
+  state.activeBallotElection = election;
+  state.selectedCandidateId = null;
+
+  $('#ballotElectionTitle').textContent = election.title;
+  $('#ballotDates').textContent = `Voting Period: ${fmt(election.startTime)} to ${fmt(election.endTime)}`;
+  $('#ballotDesc').textContent = election.description || '';
+  
+  // Countdown
+  const cdSlot = $('#ballotCountdown');
+  if (election.status === 'ACTIVE' && election.endTime) {
+    cdSlot.style.display = 'block';
+    const cdEl = cdSlot.querySelector('.cdtimer');
+    startCountdown(election.endTime, cdEl, () => loadData());
+  } else {
+    cdSlot.style.display = 'none';
+  }
+
+  $('#submitVoteBtn').disabled = true;
+  $('#ballotCandidatesList').innerHTML = '<p class="empty">Loading candidates...</p>';
+  switchTab('ballot');
+
   // Load election-specific announcements
-  let annHtml = '';
   try {
-    const anns = await api(`/public/elections/${e.id}/announcements`);
-    if (anns.length) {
-      annHtml = anns.map(a => `<div class="announcement-banner"><p>📢 ${esc(a.message)}</p><p class="ann-time">${esc(fmt(a.publishedAt))}</p></div>`).join('');
+    const elAnns = await api(`/public/elections/${electionId}/announcements`);
+    const annBox = $('#ballotAnnouncements');
+    if (elAnns && elAnns.length) {
+      annBox.innerHTML = elAnns.map(a => `
+        <div class="announcement-banner" style="margin-bottom:12px;border-radius:10px;">
+          <p>📢 <strong>Election Notice:</strong> ${esc(a.message)}</p>
+          <p class="ann-time">${esc(fmt(a.publishedAt))}</p>
+        </div>
+      `).join('');
+      annBox.style.display = 'block';
+    } else {
+      annBox.innerHTML = '';
+      annBox.style.display = 'none';
     }
   } catch(_) {}
 
-  let applyHtml = '';
-  if (e.status !== 'CLOSED') {
-    applyHtml = `<details style="margin: 12px 0;">
-      <summary style="font-size:14px;cursor:pointer;color:var(--mark);">Apply to contest as a candidate</summary>
-      <form class="apply-form" data-election="${e.id}" style="margin-top:10px">
-        <label>Candidate Full Name</label>
-        <input type="text" name="name" required maxlength="150" placeholder="e.g. Alex Johnson">
-        <label>Manifesto / Agenda (optional)</label>
-        <textarea name="manifesto" maxlength="2000" placeholder="Why should people vote for you? Your plans and promises..."></textarea>
-        <label>Photo (optional)</label>
-        <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,image/gif">
-        <p class="hint">JPG, PNG, WebP or GIF, up to 2 MB.</p>
-        <button class="btn small" style="margin-top:6px">Submit candidacy application</button>
-        <div class="apply-msg" style="margin-top:8px"></div>
-      </form>
-    </details>`;
-  }
+  // Load Candidates
+  try {
+    let cands;
+    try { cands = await api(`/elections/${electionId}/candidates/full`); }
+    catch(_) { cands = await api(`/elections/${electionId}/candidates`); }
+    state.candidateList = cands || [];
 
-  sec.innerHTML = `<h2>${esc(e.title)} ${statusTag(e.status)}</h2>
-    <p class="meta">Voting ${esc(fmt(e.startTime))} to ${esc(fmt(e.endTime))}</p>
-    ${e.description ? `<p>${esc(e.description)}</p>` : ''}${annHtml}${body}${applyHtml}${resultsLine(e)}`;
+    if (!cands || !cands.length) {
+      $('#ballotCandidatesList').innerHTML = '<p class="empty">No candidates have been announced for this election yet.</p>';
+      return;
+    }
 
-  root.append(sec);
-
-  if (e.status === 'ACTIVE' && !e.hasVoted) {
-    const cdEl = sec.querySelector('.cdtimer');
-    if (cdEl) startCountdown(e.endTime, cdEl, () => load());
-    renderBallot(e, sec.querySelector('.ballot-slot'));
+    $('#ballotCandidatesList').innerHTML = cands.map(c => {
+      const avatarSrc = c.photoUrl ? esc(c.photoUrl) : `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=143829&color=fff`;
+      return `
+      <div class="vh-candidate-card" data-cid="${c.id}" onclick="selectCandidate(${c.id})">
+        <div class="vh-radio">
+          <div class="vh-radio-dot"></div>
+        </div>
+        <img class="vh-candidate-avatar" src="${avatarSrc}" alt="${esc(c.name)}" title="Click to view full photo" onclick="event.stopPropagation(); openPhotoModal('${avatarSrc}', '${esc(c.name)}');" loading="lazy">
+        <div class="vh-candidate-details">
+          <h4 class="vh-candidate-name">${esc(c.name)}</h4>
+          <p class="vh-candidate-slogan">${esc(c.description || 'Candidate for Student Representative')}</p>
+        </div>
+        ${c.manifesto ? `<button type="button" class="vh-manifesto-btn" onclick="event.stopPropagation();openManifestoModal(${c.id})">📄 View Manifesto</button>` : ''}
+      </div>
+    `}).join('');
+  } catch(err) {
+    $('#ballotCandidatesList').innerHTML = `<p class="msg err">${esc(err.message)}</p>`;
   }
 }
 
-async function renderBallot(e, slot) {
-  let cands;
+// Select Candidate in Ballot
+function selectCandidate(candidateId) {
+  state.selectedCandidateId = Number(candidateId);
+  $$('.vh-candidate-card').forEach(card => {
+    if (Number(card.dataset.cid) === Number(candidateId)) {
+      card.classList.add('selected');
+    } else {
+      card.classList.remove('selected');
+    }
+  });
+  $('#submitVoteBtn').disabled = false;
+}
+
+// Submit Vote Trigger Modal
+$('#submitVoteBtn').onclick = () => {
+  if (!state.selectedCandidateId || !state.activeBallotElection) return;
+  const cand = state.candidateList.find(c => Number(c.id) === Number(state.selectedCandidateId));
+  if (!cand) return;
+  $('#confirmCandidateName').textContent = cand.name;
+  $('#confirmVoteModal').style.display = 'flex';
+};
+
+function closeConfirmModal() {
+  $('#confirmVoteModal').style.display = 'none';
+}
+
+$('#confirmVoteProceedBtn').onclick = async () => {
+  const btn = $('#confirmVoteProceedBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
   try {
-    // Try full endpoint (with manifesto), fall back to basic
-    try { cands = await api(`/elections/${e.id}/candidates/full`); }
-    catch(_) { cands = await api(`/elections/${e.id}/candidates`); }
-  } catch (err) { slot.innerHTML = `<p class="msg err">${esc(err.message)}</p>`; return; }
-  if (!cands.length) { slot.innerHTML = '<p class="empty">No candidates have been added yet. Check back soon.</p>'; return; }
+    await api(`/elections/${state.activeBallotElection.id}/vote`, {
+      method: 'POST',
+      body: { candidateId: state.selectedCandidateId }
+    });
 
-  slot.innerHTML = `<form><fieldset style="border:0;padding:0;margin:0"><legend class="meta">Mark one candidate</legend>
-    <div class="ballot">${cands.map((c) => `<label class="choice"><input type="radio" name="c${e.id}" value="${c.id}"><span class="box"></span>
-      ${c.photoUrl ? `<img class="photo" src="${esc(c.photoUrl)}" alt="Photo of ${esc(c.name)}" loading="lazy">` : ''}
-      <span class="who"><strong>${esc(c.name)}</strong>${c.description ? `<span>${esc(c.description)}</span>` : ''}
-      ${c.manifesto ? `<span><button type="button" class="manifesto-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'Hide manifesto ▲':'Read manifesto ▼'">Read manifesto ▼</button><span class="manifesto-text">${esc(c.manifesto)}</span></span>` : ''}
-      </span></label>`).join('')}</div></fieldset>
-    <button class="btn" disabled>Review your choice</button><div class="confirm-slot"></div></form>`;
+    closeConfirmModal();
+    launchConfetti();
 
-  const form = slot.querySelector('form'), btn = form.querySelector('.btn'), conf = form.querySelector('.confirm-slot');
-  form.addEventListener('change', () => { btn.disabled = false; conf.innerHTML = ''; btn.hidden = false; });
-  form.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const picked = form.querySelector('input:checked');
-    if (!picked) return;
-    const name = cands.find((c) => String(c.id) === picked.value).name;
-    btn.hidden = true;
-    conf.innerHTML = `<div class="confirm"><p><strong>You are voting for ${esc(name)}.</strong></p>
-      <p>Once you confirm, your vote is final and can't be changed.</p>
-      <div class="row"><button type="button" class="btn" id="yes">Confirm vote</button><button type="button" class="btn plain" id="no">Go back</button></div></div>`;
-    conf.querySelector('#no').onclick = () => { conf.innerHTML = ''; btn.hidden = false; };
-    conf.querySelector('#yes').onclick = async (click) => {
-      click.target.disabled = true;
-      try {
-        await api(`/elections/${e.id}/vote`, { method: 'POST', body: { candidateId: Number(picked.value) } });
-        launchConfetti();
-        load();
-      } catch (err) {
-        notify($('#msg'), err.message, 'err');
-        if (err.status === 409) load(); else click.target.disabled = false;
+    // Fetch anonymity receipt token
+    try {
+      const myStatus = await api(`/elections/${state.activeBallotElection.id}/my-status`);
+      if (myStatus && myStatus.receiptToken) {
+        $('#successReceiptTokenText').textContent = myStatus.receiptToken;
+        $('#successReceiptContainer').style.display = 'block';
       }
-    };
+    } catch(_) {}
+
+    $('#successVoteModal').style.display = 'flex';
+    await loadData();
+  } catch(err) {
+    closeConfirmModal();
+    notify($('#msg'), err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Confirm Vote';
+  }
+};
+
+function closeSuccessModal() {
+  $('#successVoteModal').style.display = 'none';
+  switchTab('dashboard');
+}
+
+// Direct Receipt Viewer
+async function viewReceiptDirect(electionId) {
+  try {
+    const s = await api(`/elections/${electionId}/my-status`);
+    if (s && s.receiptToken) {
+      $('#successReceiptTokenText').textContent = s.receiptToken;
+      $('#successReceiptContainer').style.display = 'block';
+      $('#successVoteModal').style.display = 'flex';
+    }
+  } catch(e) {
+    notify($('#msg'), 'Could not fetch receipt: ' + e.message, 'err');
+  }
+}
+
+// Manifesto Modal
+function openManifestoModal(candidateId) {
+  const cand = state.candidateList.find(c => Number(c.id) === Number(candidateId));
+  if (!cand) return;
+  $('#manifestoModalTitle').textContent = `${cand.name} — Official Manifesto`;
+  $('#manifestoModalName').textContent = cand.name;
+  $('#manifestoModalSlogan').textContent = cand.description || 'Candidate';
+  $('#manifestoModalPhoto').src = cand.photoUrl ? cand.photoUrl : `https://ui-avatars.com/api/?name=${encodeURIComponent(cand.name)}&background=143829&color=fff`;
+  $('#manifestoModalPhoto').onclick = () => openPhotoModal($('#manifestoModalPhoto').src, cand.name);
+  $('#manifestoModalPhoto').style.cursor = 'zoom-in';
+  $('#manifestoModalText').textContent = cand.manifesto || 'No written manifesto provided.';
+  $('#manifestoModal').style.display = 'flex';
+}
+
+function closeManifestoModal() {
+  $('#manifestoModal').style.display = 'none';
+}
+
+// Modal Backdrop Click to Close
+$('#manifestoModal').addEventListener('click', (e) => { if (e.target.id === 'manifestoModal') closeManifestoModal(); });
+$('#confirmVoteModal').addEventListener('click', (e) => { if (e.target.id === 'confirmVoteModal') closeConfirmModal(); });
+$('#successVoteModal').addEventListener('click', (e) => { if (e.target.id === 'successVoteModal') closeSuccessModal(); });
+
+// My Votes History Loader
+async function loadMyVotes() {
+  const tbody = $('#myVotesTableBody');
+  tbody.innerHTML = '<tr><td colspan="4" class="empty">Loading your participation history...</td></tr>';
+  
+  const votedElections = state.elections.filter(e => e.hasVoted);
+  if (!votedElections.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">You have not cast a vote in any election yet.</td></tr>';
+    return;
+  }
+
+  let rows = '';
+  for (const e of votedElections) {
+    let token = '—';
+    let votedTime = '—';
+    try {
+      const s = await api(`/elections/${e.id}/my-status`);
+      if (s.receiptToken) token = s.receiptToken;
+      if (s.votedAt) votedTime = fmt(s.votedAt);
+    } catch(_) {}
+
+    rows += `
+      <tr>
+        <td><strong>${esc(e.title)}</strong></td>
+        <td><span class="badge approved">Submitted</span></td>
+        <td style="color:var(--muted);">${esc(votedTime)}</td>
+        <td>
+          <span style="font-family:monospace;font-size:12px;background:var(--faint);padding:3px 6px;border-radius:4px;border:1px solid var(--vh-border);margin-right:6px;">${esc(token.substring(0, 16))}...</span>
+          <button type="button" class="copy-btn" onclick="copyRawToken('${esc(token)}', this)">Copy Full Token</button>
+        </td>
+      </tr>
+    `;
+  }
+  tbody.innerHTML = rows;
+}
+
+// Copy Token helper
+function copyToken(elementId, btn) {
+  const text = $(`#${elementId}`).textContent;
+  copyRawToken(text, btn);
+}
+
+function copyRawToken(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied! ✓';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
   });
 }
 
-async function load() {
-  try {
-    const list = await api('/elections');
-    root.innerHTML = '';
-    if (!list.length) {
-      root.innerHTML = '<p class="empty">There are no elections for your account right now. Check back when voting opens, or contact your election administrator.</p>';
-      return;
-    }
-    for (const e of list) await renderElection(e);
-  } catch (err) { root.innerHTML = ''; notify($('#msg'), err.message, 'err'); }
+// Results View
+function loadResultsView() {
+  const select = $('#resultsElectionSelect');
+  const available = state.elections.filter(e => e.resultsVisible || e.status === 'CLOSED');
+  
+  if (!available.length) {
+    select.innerHTML = '<option value="">No results available</option>';
+    $('#resultsChartContainer').innerHTML = '<p class="empty">Results will be published by election administrators once voting concludes.</p>';
+    return;
+  }
+
+  select.innerHTML = available.map(e => `<option value="${e.id}">${esc(e.title)}</option>`).join('');
+  select.onchange = () => renderElectionResults(Number(select.value));
+  renderElectionResults(Number(select.value));
 }
 
-document.body.addEventListener('submit', async (ev) => {
-  const form = ev.target.closest('.apply-form');
-  if (!form) return;
-  ev.preventDefault();
-  const eid = form.dataset.election;
-  const name = form.querySelector('[name="name"]').value.trim();
-  const manifesto = form.querySelector('[name="manifesto"]').value.trim();
-  const photoInput = form.querySelector('[name="photo"]');
-  const msgEl = form.querySelector('.apply-msg');
-  const btn = form.querySelector('button');
+function viewElectionResults(electionId) {
+  switchTab('results');
+  $('#resultsElectionSelect').value = String(electionId);
+  renderElectionResults(electionId);
+}
+
+async function renderElectionResults(electionId) {
+  if (!electionId) return;
+  const container = $('#resultsChartContainer');
+  container.innerHTML = '<p class="empty">Loading certified election results...</p>';
+  try {
+    const res = await api(`/elections/${electionId}/results`);
+    container.innerHTML = renderComparisonChart(res);
+  } catch(err) {
+    container.innerHTML = `<p class="msg err">${esc(err.message)}</p>`;
+  }
+}
+
+// Candidacy Form
+function populateApplyElections() {
+  const select = $('#applyElectionSelect');
+  const openForApply = state.elections.filter(e => e.status !== 'CLOSED');
+  if (!openForApply.length) {
+    select.innerHTML = '<option value="">No open elections available for application</option>';
+    return;
+  }
+  select.innerHTML = openForApply.map(e => `<option value="${e.id}">${esc(e.title)} (${statusTag(e.status)})</option>`).join('');
+
+  const nameInput = $('#applyCandidateName');
+  if (nameInput && !nameInput.value) {
+    const cachedName = sessionStorage.getItem('name');
+    if (cachedName) nameInput.value = cachedName;
+    else {
+      const email = sessionStorage.getItem('email') || '';
+      const prefix = email.split('@')[0];
+      if (prefix) nameInput.placeholder = 'e.g. ' + prefix;
+    }
+  }
+}
+
+$('#applyCandidateForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const eid = $('#applyElectionSelect').value;
+  const name = $('#applyCandidateName').value.trim();
+  const manifesto = $('#applyManifesto').value.trim();
+  const photoFile = $('#applyPhoto').files[0];
+  const msgEl = $('#applyMsg');
+  const btn = $('#applyCandidateForm').querySelector('button');
+
+  if (!eid) {
+    msgEl.innerHTML = '<p class="msg err">Please select an election.</p>';
+    return;
+  }
+  if (!name) {
+    msgEl.innerHTML = '<p class="msg err">Please enter your candidate full name.</p>';
+    return;
+  }
+
   btn.disabled = true;
+  btn.textContent = 'Submitting Application...';
+
   try {
     const fd = new FormData();
     fd.append('name', name);
     if (manifesto) fd.append('manifesto', manifesto);
-    if (photoInput && photoInput.files[0]) {
-      const file = photoInput.files[0];
-      if (file.size > 2 * 1024 * 1024) throw new Error('The photo must be 2 MB or smaller.');
-      fd.append('photo', file);
+    if (photoFile) {
+      if (photoFile.size > 2 * 1024 * 1024) throw new Error('Photo must be 2 MB or smaller.');
+      fd.append('photo', photoFile);
     }
     await api(`/elections/${eid}/apply`, { method: 'POST', body: fd });
-    msgEl.innerHTML = '<p class="msg ok">Application submitted! The election administrator will review it.</p>';
-    form.reset();
+    msgEl.innerHTML = '<p class="msg ok">✅ Application submitted successfully! The election committee will review your nomination.</p>';
+    $('#applyCandidateForm').reset();
   } catch(err) {
     msgEl.innerHTML = `<p class="msg err">${esc(err.message)}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit Application';
   }
-  btn.disabled = false;
 });
 
-loadAnnouncements();
-load();
+// Main Initial Data Load
+async function loadData() {
+  try {
+    state.elections = await api('/elections');
+    renderElectionsLists();
+    await loadAnnouncements();
+  } catch(err) {
+    notify($('#msg'), err.message, 'err');
+  }
+}
+
+loadData();
 </script>
 </body>
 </html>

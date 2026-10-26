@@ -55,4 +55,7 @@ public class Election {
      */
     @Column(name = "allowed_domains", length = 1000)
     private String allowedDomains;
+
+    @Column(name = "cover_url", length = 1000)
+    private String coverUrl;
 }

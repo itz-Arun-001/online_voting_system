@@ -38,6 +38,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Object> handleApi(ApiException ex) {
+        log.warn("API Exception ({}): {}", ex.getStatus(), ex.getMessage());
         return build(ex.getStatus(), ex.getMessage());
     }
 
@@ -59,6 +60,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @Override
     @Nullable
+    protected ResponseEntity<Object> handleHttpMessageNotReadable(@NonNull org.springframework.http.converter.HttpMessageNotReadableException ex,
+                                                                   @NonNull HttpHeaders headers,
+                                                                   @NonNull HttpStatusCode status,
+                                                                   @NonNull WebRequest request) {
+        log.warn("HTTP message not readable: {}", ex.getMessage());
+        String cause = ex.getMostSpecificCause() != null ? ex.getMostSpecificCause().getMessage() : ex.getMessage();
+        return build(status, cause != null && !cause.isBlank() ? cause : "Failed to read request body.");
+    }
+
+    @Override
+    @Nullable
     protected ResponseEntity<Object> handleMethodArgumentNotValid(@NonNull MethodArgumentNotValidException ex,
                                                                   @NonNull HttpHeaders headers,
                                                                   @NonNull HttpStatusCode status,
@@ -76,7 +88,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                              @NonNull HttpHeaders headers,
                                                              @NonNull HttpStatusCode status,
                                                              @NonNull WebRequest request) {
-        String msg = body instanceof ProblemDetail pd && pd.getDetail() != null ? pd.getDetail() : "Request failed.";
+        log.warn("Spring MVC error (status {}): {} ({})", status, ex.getMessage(), ex.getClass().getSimpleName());
+        String msg = body instanceof ProblemDetail pd && pd.getDetail() != null
+                ? pd.getDetail()
+                : (ex.getMessage() != null && !ex.getMessage().isBlank() ? ex.getMessage() : "Request failed (" + status.value() + ").");
         return build(status, msg);
     }
 }

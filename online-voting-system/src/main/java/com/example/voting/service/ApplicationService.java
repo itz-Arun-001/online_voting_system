@@ -102,7 +102,10 @@ public class ApplicationService {
 
     private ApplicationView toView(CandidateApplication a) {
         String photoUrl = a.getPhotoData() != null ? "/api/public/applications/" + a.getId() + "/photo" : null;
-        return new ApplicationView(a.getId(), a.getElectionId(), a.getName(), a.getManifesto(),
-                a.getApplicantEmail(), a.getStatus(), a.getAppliedAt(), photoUrl);
+        String name = (a.getName() != null && !a.getName().isBlank())
+                ? a.getName()
+                : (a.getApplicantEmail() != null ? a.getApplicantEmail().split("@")[0] : "Applicant");
+        return new ApplicationView(a.getId(), a.getElectionId(), name, a.getManifesto(),
+                a.getApplicantEmail(), a.getStatus(), a.getAppliedAt() != null ? a.getAppliedAt() : Instant.now(), photoUrl);
     }
 }

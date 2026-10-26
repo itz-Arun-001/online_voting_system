@@ -49,6 +49,7 @@ public class Schedulers {
             if (auto && !e.isResultsPublished() && electionService.canViewResults(e)) {
                 e.setResultsPublished(true);
                 elections.save(e);
+                electionService.autoAnnounceWinnerIfDue(e.getId());
             }
         }
     }

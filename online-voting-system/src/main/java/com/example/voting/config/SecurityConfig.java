@@ -40,7 +40,8 @@ public class SecurityConfig {
                 .dispatcherTypeMatchers(DispatcherType.ERROR, DispatcherType.ASYNC).permitAll()
                 .requestMatchers("/api/auth/**", "/api/public/**",
                         "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**",
-                        "/", "/*.html", "/css/**", "/js/**", "/favicon.ico").permitAll()
+                        "/", "/*.html", "/css/**", "/js/**", "/images/**", "/img/**",
+                        "/*.png", "/*.jpg", "/*.jpeg", "/*.webp", "/*.svg", "/favicon.ico").permitAll()
                 .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "CO_ADMIN")
                 .anyRequest().authenticated())
             .exceptionHandling(e -> e

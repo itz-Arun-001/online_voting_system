@@ -3,90 +3,153 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Results - College Election</title>
+<title>Results — CampusVote</title>
+<link rel="icon" type="image/png" href="images/logo.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-<main class="sheet">
-  <header class="top"><a class="brand" href="/">College Election</a><nav id="nav"></nav></header>
-  <h1 id="title">Results</h1>
-  <p class="meta" id="state"></p>
-  <div id="msg"></div>
-  <div id="bars"></div>
-  <p><a href="vote.html">← Back to elections</a></p>
-</main>
-<script src="js/app.js"></script>
-<script>
-requireLogin();
-const $ = (s) => document.querySelector(s);
-const id = new URLSearchParams(location.search).get('id');
+<div class="vh-app">
+  <aside class="vh-sidebar" id="sidebar">
+    <a class="vh-brand" href="vote.html">
+      <span class="vh-brand-logo"></span>
+      CampusVote
+    </a>
+    <nav class="vh-nav">
+      <a href="vote.html" class="vh-nav-item">
+        <span class="vh-nav-icon">🏠</span>
+        Dashboard
+      </a>
+      <a href="vote.html" class="vh-nav-item">
+        <span class="vh-nav-icon">🗳️</span>
+        Elections
+      </a>
+      <a href="#" class="vh-nav-item active">
+        <span class="vh-nav-icon">📊</span>
+        Results
+      </a>
+    </nav>
+    <div class="vh-sidebar-footer">
+      <a href="vote.html" class="btn plain small" style="width:100%;">← Back to Portal</a>
+    </div>
+  </aside>
 
-function leaderboard(res) {
-  const max = Math.max(1, ...res.candidates.map((c) => c.votes));
-  const sorted = [...res.candidates].sort((a,b) => b.votes - a.votes);
-  const rankLabel = (i) => {
-    const medals = ['🥇','🥈','🥉'];
-    const cls = ['first','second','third'][i] || '';
-    return `<span class="lb-rank ${cls}">${medals[i] || (i+1)}</span>`;
-  };
-  const rows = sorted.map((c, i) => `<div class="lb-row">
+      <main class="vh-main">
+        <header class="vh-header">
+          <div>
+            <h1 class="vh-title" id="title">Certified Results</h1>
+            <p class="vh-subtitle" id="state">Fetching election outcome...</p>
+          </div>
+          <div class="vh-header-actions">
+            <a href="vote.html" class="vh-back-btn" style="margin: 0"
+              >← Back to Elections</a
+            >
+          </div>
+        </header>
+
+        <div id="msg"></div>
+        <div id="bars"></div>
+      </main>
+    </div>
+    <script src="js/app.js"></script>
+    <script>
+      requireLogin();
+      const $ = (s) => document.querySelector(s);
+      const id = new URLSearchParams(location.search).get("id");
+
+      function leaderboard(res) {
+        const max = Math.max(1, ...res.candidates.map((c) => c.votes));
+        const sorted = [...res.candidates].sort((a, b) => b.votes - a.votes);
+        const rankLabel = (i) => {
+          const medals = ["🥇", "🥈", "🥉"];
+          const cls = ["first", "second", "third"][i] || "";
+          return `<span class="lb-rank ${cls}">${medals[i] || i + 1}</span>`;
+        };
+        const rows = sorted
+          .map(
+            (c, i) => `<div class="lb-row">
     ${rankLabel(i)}
     <div><strong>${esc(c.name)}</strong></div>
-    <div class="lb-bar"><div class="lb-fill" style="width:${max>0?(c.votes/max*100):0}%"></div></div>
-    <div class="lb-votes">${c.votes} ${c.votes===1?'vote':'votes'}</div>
-  </div>`).join('');
-  return `<div class="leaderboard">${rows || '<p class="empty">No candidates yet.</p>'}</div>
-    <p class="total" style="text-align:right">${res.totalVotes} ${res.totalVotes===1?'vote':'votes'} cast in total</p>`;
-}
+    <div class="lb-bar"><div class="lb-fill" style="width:${max > 0 ? (c.votes / max) * 100 : 0}%"></div></div>
+    <div class="lb-votes">${c.votes} ${c.votes === 1 ? "vote" : "votes"}</div>
+  </div>`,
+          )
+          .join("");
+        return `<div class="leaderboard">${rows || '<p class="empty">No candidates yet.</p>'}</div>
+    <p class="total" style="text-align:right">${res.totalVotes} ${res.totalVotes === 1 ? "vote" : "votes"} cast in total</p>`;
+      }
 
-const draw = (res) => { $('#title').textContent = res.title; $('#bars').innerHTML = renderComparisonChart(res); };
+      const draw = (res) => {
+        $("#title").textContent = res.title;
+        $("#bars").innerHTML = renderComparisonChart(res);
+      };
 
-async function startStream() {
-  let delay = 2000;
-  while (true) {
-    try {
-      const res = await fetch(`/api/elections/${id}/results/stream`, { headers: { Authorization: 'Bearer ' + sessionStorage.getItem('token'), Accept: 'text/event-stream' } });
-      if (!res.ok) throw new Error('stream');
-      $('#state').textContent = '🔴 Live — counts update as votes come in.';
-      const reader = res.body.getReader(), dec = new TextDecoder();
-      let buf = '';
-      delay = 2000;
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-        let i;
-        while ((i = buf.indexOf('\n\n')) >= 0) {
-          const block = buf.slice(0, i); buf = buf.slice(i + 2);
-          const line = block.split('\n').find((l) => l.startsWith('data:'));
-          if (line) draw(JSON.parse(line.slice(5)));
+      async function startStream() {
+        let delay = 2000;
+        while (true) {
+          try {
+            const res = await fetch(`/api/elections/${id}/results/stream`, {
+              headers: {
+                Authorization: "Bearer " + sessionStorage.getItem("token"),
+                Accept: "text/event-stream",
+              },
+            });
+            if (!res.ok) throw new Error("stream");
+            $("#state").textContent =
+              "🔴 Live — counts update as votes come in.";
+            const reader = res.body.getReader(),
+              dec = new TextDecoder();
+            let buf = "";
+            delay = 2000;
+            for (;;) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+              let i;
+              while ((i = buf.indexOf("\n\n")) >= 0) {
+                const block = buf.slice(0, i);
+                buf = buf.slice(i + 2);
+                const line = block
+                  .split("\n")
+                  .find((l) => l.startsWith("data:"));
+                if (line) draw(JSON.parse(line.slice(5)));
+              }
+            }
+          } catch (_) {
+            $("#state").textContent = "Reconnecting…";
+            try {
+              draw(await api(`/elections/${id}/results`));
+            } catch (_) {}
+          }
+          await new Promise((r) => setTimeout(r, delay));
+          delay = Math.min(delay * 2, 20000);
         }
       }
-    } catch (_) {
-      $('#state').textContent = 'Reconnecting…';
-      try { draw(await api(`/elections/${id}/results`)); } catch (_) {}
-    }
-    await new Promise((r) => setTimeout(r, delay));
-    delay = Math.min(delay * 2, 20000);
-  }
-}
 
-(async () => {
-  if (!id) { notify($('#msg'), 'No election selected.', 'err'); return; }
-  try {
-    const e = await api(`/elections/${id}`);
-    $('#title').textContent = e.title;
-    try {
-      draw(await api(`/elections/${id}/results`));
-      if (e.resultMode === 'LIVE' && e.status !== 'CLOSED') startStream();
-      else $('#state').textContent = e.status === 'CLOSED' ? '✅ Final results.' : 'Results so far.';
-    } catch (err) {
-      let text = err.message;
-      if (e.resultMode === 'SCHEDULED' && e.resultsPublishAt) text = 'Results will be available on ' + fmt(e.resultsPublishAt) + '.';
-      notify($('#msg'), text, 'err');
-    }
-  } catch (err) { notify($('#msg'), err.message, 'err'); }
-})();
-</script>
-</body>
+      (async () => {
+        if (!id) {
+          notify($("#msg"), "No election selected.", "err");
+          return;
+        }
+        try {
+          const e = await api(`/elections/${id}`);
+          $("#title").textContent = e.title;
+          try {
+            draw(await api(`/elections/${id}/results`));
+            if (e.resultMode === "LIVE" && e.status !== "CLOSED") startStream();
+            else
+              $("#state").textContent =
+                e.status === "CLOSED" ? "✅ Final results." : "Results so far.";
+          } catch (err) {
+            let text = err.message;
+            if (e.resultMode === "SCHEDULED" && e.resultsPublishAt)
+              text =
+                "Results will be available on " + fmt(e.resultsPublishAt) + ".";
+            notify($("#msg"), text, "err");
+          }
+        } catch (err) {
+          notify($("#msg"), err.message, "err");
+        }
+      })();
+    </script>
+  </body>
 </html>
