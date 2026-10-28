@@ -6,6 +6,10 @@
 
 *Sign in with an email code. Vote once. Watch results on your terms.*
 
+### 🌐 [Live demo: online-voting-system-b4m9.onrender.com](https://online-voting-system-b4m9.onrender.com/)
+
+> The web UI is branded **CampusVote** (logo and campus images live in `static/images/`). Rename it by editing the `<title>` tags, the brand text in the HTML pages and the images.
+
 ![Java](https://img.shields.io/badge/Java-17-orange?logo=openjdk&logoColor=white)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.5-6DB33F?logo=springboot&logoColor=white)
 ![Spring Security](https://img.shields.io/badge/Spring%20Security-JWT-6DB33F?logo=springsecurity&logoColor=white)
@@ -15,6 +19,7 @@
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
 ![OpenAPI](https://img.shields.io/badge/Swagger-OpenAPI%203-85EA2D?logo=swagger&logoColor=black)
 ![Tests](https://img.shields.io/badge/tests-18-brightgreen)
+[![Live demo](https://img.shields.io/badge/live%20demo-Render-46E3B7?logo=render&logoColor=white)](https://online-voting-system-b4m9.onrender.com/)
 
 [Features](#-features) · [How it works](#-how-it-works) · [Architecture](#-architecture) · [Tech stack](#-tech-stack) · [Quick start](#-quick-start) · [Configuration](#-configuration) · [API](#-api-reference) · [Deployment](#-deployment) · [Security](#-security-design)
 
@@ -39,7 +44,8 @@ Voters never create or remember a password. They enter their college email, rece
 - 🗂️ See only the elections you are eligible for
 - 🧑‍💼 Browse candidates with photos, descriptions and **manifestos**
 - 📝 **Apply to contest** as a candidate (name, manifesto, optional photo) while an election is not closed
-- 📢 Read **announcements**, both site-wide and per election
+- 📢 Read **announcements**, both site-wide and per election, from the dashboard and its bell icon
+- 🏆 See the **official winner** (or a tie) highlighted on the results page and election cards once a closed election's results are visible
 - ✅ Cast **one vote per election**, guaranteed by a database constraint
 - 🔎 Check whether you have voted (and when), never *who* you voted for
 - 🧾 Get a **vote receipt code** (`RCPT-…`) as confirmation that your vote was recorded
@@ -47,9 +53,11 @@ Voters never create or remember a password. They enter their college email, rece
 
 ### 🛠️ For administrators
 - 🆕 Create, edit (before voting starts), close and delete elections with a voting window
+- 🖼️ Add an election **cover photo**, either by **uploading** an image (JPG, PNG, WebP, GIF, max 2 MB) or by pasting an image **URL**
 - 👥 Manage candidates, including **manifesto** and **photo upload** (JPG, PNG, WebP, GIF, max 2 MB)
 - ✅ **Approve or reject candidacy applications**; approving creates the candidate (with manifesto and photo) automatically
 - 📢 Post **announcements** (global or per election), published instantly or **scheduled**
+- 🏆 **Announce the winner** with one click; when results are published the winner announcement is also **posted automatically** (only if at least one vote was cast)
 - 🤝 Add **co-admins** from any email domain and assign them specific elections
 - 📥 Bulk-import the voter list from **CSV** (auto-normalised, de-duplicated, domain-validated)
 - 🌐 Choose eligibility: **voter list only** or **open to a college email domain**
@@ -260,6 +268,7 @@ erDiagram
     ELECTIONS ||--o{ CANDIDATE_APPLICATIONS : receives
     ELECTIONS ||--o{ ANNOUNCEMENTS : "may have"
     ELECTIONS ||--o{ CANDIDATES : has
+    ELECTIONS ||--o| ELECTION_COVERS : "may have"
     ELECTIONS ||--o{ ELIGIBLE_VOTERS : lists
     ELECTIONS ||--o{ VOTES : receives
     CANDIDATES ||--o{ VOTES : "chosen in"
@@ -284,7 +293,13 @@ erDiagram
         boolean results_published
         boolean restrict_to_eligible_list
         string allowed_domains
+        string cover_url "external URL or /api/public/elections/{id}/cover"
         long created_by
+    }
+    ELECTION_COVERS {
+        long election_id PK
+        string content_type
+        blob data "max 2 MB"
     }
     CANDIDATES {
         long id PK
@@ -498,6 +513,7 @@ The header row is optional. Emails are trimmed and lowercased, so `Rohan.Das@You
 - Approving an application after the first vote marks it `APPROVED` but does **not** add a candidate, because the ballot is locked.
 - Each email can submit one application per election.
 - Closing an election early moves its end time to now.
+- The winner announcement is created at most once automatically (it looks for an existing announcement containing "Official Result"). If nobody voted, no automatic announcement is posted. A tie is announced as a tie for first place. The manual **Announce winner** button always posts a new announcement, so avoid pressing it twice.
 - A non-admin can only request a sign-in code if their email is on a voter list, or a non-closed election allows their domain.
 - Every admin action is written to the audit log.
 
@@ -533,6 +549,7 @@ Interactive docs: **`/swagger-ui.html`** · OpenAPI JSON: **`/v3/api-docs`**
 | `POST` | `/api/auth/verify-otp` | Verify code, receive JWT |
 | `GET` | `/api/public/config` | Allowed domains, OTP length, hints |
 | `GET` | `/api/public/candidates/{id}/photo` | Candidate photo |
+| `GET` | `/api/public/elections/{id}/cover` | Uploaded election cover photo |
 | `GET` | `/api/public/announcements` | Published global announcements |
 | `GET` | `/api/public/elections/{id}/announcements` | Published announcements for an election |
 | `GET` | `/api/public/applications/{id}/photo` | Photo attached to a candidacy application |
@@ -555,11 +572,12 @@ Interactive docs: **`/swagger-ui.html`** · OpenAPI JSON: **`/v3/api-docs`**
 
 | Area | Endpoints |
 |---|---|
-| **Elections** | `GET/POST /api/admin/elections` · `PUT/DELETE /api/admin/elections/{id}` · `PUT …/{id}/close` |
+| **Elections** | `GET/POST /api/admin/elections` · `GET/PUT/DELETE /api/admin/elections/{id}` · `PUT …/{id}/close` |
+| **Cover photo** | `POST …/elections/{id}/cover` (multipart `file`) · `PUT …/elections/{id}/cover-url` (`{"coverUrl": "…"}`) · `DELETE …/elections/{id}/cover` |
 | **Candidates** | `GET/POST /api/admin/elections/{id}/candidates` · `PUT/DELETE /api/admin/candidates/{id}` · `POST/DELETE /api/admin/candidates/{id}/photo` |
 | **Voters** | `POST …/{id}/voters/upload` · `GET …/voters/eligible` · `GET …/voters/voted` · `GET …/voters/not-voted` · `DELETE …/voters/{email}` · `GET …/voters/export?type=` |
 | **Turnout** | `GET …/{id}/turnout` |
-| **Results** | `PUT …/{id}/result-settings` · `POST …/{id}/publish-results` · `GET …/{id}/results` · `GET …/{id}/results/export` |
+| **Results** | `PUT …/{id}/result-settings` · `POST …/{id}/publish-results` · `POST …/{id}/announce-winner` · `GET …/{id}/results` · `GET …/{id}/results/export` |
 | **Audit** | `GET /api/admin/audit-logs` (full admins; co-admins get an empty page) |
 | **Announcements** | `GET/POST /api/admin/announcements` · `PUT …/announcements/{id}/publish` · `DELETE …/announcements/{id}` |
 | **Applications** | `GET …/elections/{id}/applications` · `PUT …/applications/{id}/approve` · `PUT …/applications/{id}/reject` |
@@ -634,7 +652,11 @@ Errors return JSON: `{"status": 409, "message": "You have already voted in this 
 
 ## ☁️ Deployment
 
+The project is currently deployed on Render at **https://online-voting-system-b4m9.onrender.com/**.
+
 Full instructions, including an election-day checklist and troubleshooting, are in **[DEPLOY.md](DEPLOY.md)**.
+
+> **The free Render plan sleeps when idle**, so the first page load after a quiet period can take up to a minute.
 
 > **Render and similar hosts often block outbound SMTP.** If codes never arrive there, use `BREVO_API_KEY` or `RESEND_API_KEY` (HTTPS, port 443) instead of SMTP.
 
@@ -682,12 +704,13 @@ online-voting-system/
     │   ├── java/com/example/voting/
     │   │   ├── VotingApplication.java
     │   │   ├── config/           # AppProperties, SecurityConfig, DataInitializer, OpenApiConfig
-    │   │   ├── controller/       # Auth, Election, Result, Admin, Photo,
+    │   │   ├── controller/       # Auth, Election, Result, Admin, Photo (candidate + cover),
     │   │   │                     # Announcement, Application
     │   │   ├── dto/              # Request/response records
     │   │   ├── entity/           # User, Election, Candidate, CandidatePhoto,
     │   │   │                     # EligibleVoter, Vote, OtpToken, AuditLog,
-    │   │   │                     # Announcement, CandidateApplication, ElectionCoAdmin
+    │   │   │                     # Announcement, CandidateApplication, ElectionCoAdmin,
+    │   │   │                     # ElectionCover
     │   │   ├── enums/            # Role (VOTER, ADMIN, CO_ADMIN), ElectionStatus, ResultMode
     │   │   ├── exception/        # ApiException, GlobalExceptionHandler
     │   │   ├── repository/       # Spring Data JPA repositories
@@ -706,6 +729,7 @@ online-voting-system/
     │           ├── vote.html     # Voter dashboard and ballot
     │           ├── results.html  # Results view
     │           ├── admin.html    # Admin console
+    │           ├── images/       # CampusVote logo and campus background
     │           ├── css/style.css
     │           └── js/app.js     # Shared fetch/JWT helpers
     └── test/
@@ -719,7 +743,7 @@ online-voting-system/
 |---|---|---|
 | `index.html` | Everyone | Email → OTP sign-in |
 | `vote.html` | Voters | Announcements, elections list, candidates and manifestos, apply as candidate, cast vote, receipt code |
-| `results.html` | Voters | Results, live-updating in `LIVE` mode |
+| `results.html` | Voters | Results, live-updating in `LIVE` mode, with an official-winner banner once an election is closed |
 | `admin.html` | Admins and co-admins | Elections, plus tabs for candidates, voter list, turnout, results, announcements, applications and election settings; co-admin management and audit log for full admins |
 
 ---
@@ -729,7 +753,7 @@ online-voting-system/
 | Job | Schedule | What it does |
 |---|---|---|
 | Status sync | Every minute | Moves elections `UPCOMING → ACTIVE → CLOSED` |
-| Result publisher | Every minute | Marks `SCHEDULED` / `ON_CLOSE` results as published |
+| Result publisher | Every minute | Marks `SCHEDULED` / `ON_CLOSE` results as published and posts the winner announcement |
 | Announcement publisher | Every minute | Publishes scheduled announcements whose time has arrived |
 | Cleanup | Hourly | Deletes stale OTPs and purges old rate-limit entries |
 | SSE heartbeat | Every 25 s | Keeps live-result connections alive through proxies |
@@ -740,6 +764,7 @@ online-voting-system/
 
 - **Candidacy applications are open.** Any signed-in user can apply to any election that is not closed, and there is no eligibility check or application deadline. Admin review is the only gate. Application photos are served from a public URL.
 - **Vote receipts do not make ballots anonymous** (see Security design). The vote screen's wording about anonymity is stronger than what the database guarantees.
+- **Cover images by URL are loaded from other sites.** A pasted cover URL is fetched by each voter's browser, so it can break or leak visits to that host. Uploading the image avoids this. The voter dashboard also uses placeholder cover images hosted on Unsplash for elections without a cover.
 - **Hard delete.** Deleting an election or using *Reset all elections* removes votes permanently.
 - **Rate limiting is in memory.** It resets on restart and is per server instance.
 - **Votes are linked to users** (simple and auditable). For fully anonymous ballots, split `votes` into a "has voted" table and a separate ballot table.
